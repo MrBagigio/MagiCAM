@@ -8,6 +8,7 @@
 		8C9E3B2A1F6E4F3B002A1B6C /* ARKitSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B6B /* ARKitSender.swift */; };
 		8C9E3B2A1F6E4F3B002A1B6D /* ARKitSenderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B6A /* ARKitSenderApp.swift */; };
 		8C9E3B2A1F6E4F3B002A1B6E /* ARSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B69 /* ARSessionManager.swift */; };
+		8C9E3B2A1F6E4F3B002A1B6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B75 /* ContentView.swift */; };
 		/* End PBXBuildFile section */
 
 		/* Begin PBXSourcesBuildPhase section */
@@ -18,6 +19,7 @@
 				8C9E3B2A1F6E4F3B002A1B6C,
 				8C9E3B2A1F6E4F3B002A1B6D,
 				8C9E3B2A1F6E4F3B002A1B6E,
+				8C9E3B2A1F6E4F3B002A1B6F,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -27,6 +29,7 @@
 		8C9E3B2A1F6E4F3B002A1B69 /* ARSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARSessionManager.swift; sourceTree = "<group>"; };
 		8C9E3B2A1F6E4F3B002A1B6A /* ARKitSenderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARKitSenderApp.swift; sourceTree = "<group>"; };
 		8C9E3B2A1F6E4F3B002A1B6B /* ARKitSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARKitSender.swift; sourceTree = "<group>"; };
+		8C9E3B2A1F6E4F3B002A1B75 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ContentView.swift; sourceTree = "<group>"; };
 		8C9E3B2A1F6E4F3B002A1B6F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = swift/Info.plist; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
@@ -81,8 +84,8 @@
 		/* End PBXProject section */
 
 		/* Begin XCBuildConfiguration section */
-		8C9E3B2A1F6E4F3B002A1B77 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SWIFT_VERSION = 5.0; PRODUCT_NAME = "MagiCAM"; }; name = Release; };
-		8C9E3B2A1F6E4F3B002A1B78 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SWIFT_VERSION = 5.0; PRODUCT_NAME = "MagiCAM"; }; name = Debug; };
+		8C9E3B2A1F6E4F3B002A1B77 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 5.0; PRODUCT_NAME = "MagiCAM"; }; name = Release; };
+		8C9E3B2A1F6E4F3B002A1B78 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 5.0; PRODUCT_NAME = "MagiCAM"; }; name = Debug; };
 		8C9E3B2A1F6E4F3B002A1B73 /* Build configuration list for PBXNativeTarget "MagiCAM" */ = {isa = XCConfigurationList; buildConfigurations = (8C9E3B2A1F6E4F3B002A1B78,8C9E3B2A1F6E4F3B002A1B77); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		8C9E3B2A1F6E4F3B002A1B76 /* Build configuration list for PBXProject "MagiCAM" */ = {isa = XCConfigurationList; buildConfigurations = (8C9E3B2A1F6E4F3B002A1B78,8C9E3B2A1F6E4F3B002A1B77); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		/* End XCBuildConfiguration section */
