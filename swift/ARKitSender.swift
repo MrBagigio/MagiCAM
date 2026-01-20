@@ -40,7 +40,7 @@ class ViewController: UIViewController, ARSessionDelegate {
                 arr.append(value)
             }
         }
-        let payload: [String: Any] = ["matrix": arr, "t": Date().timeIntervalSince1970]
+        let payload: [String: Any] = ["type": "pose", "matrix": arr, "t": Date().timeIntervalSince1970]
         do {
             let data = try JSONSerialization.data(withJSONObject: payload, options: [])
             connection?.send(content: data, completion: .contentProcessed({ _ in }))

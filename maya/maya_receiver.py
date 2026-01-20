@@ -46,10 +46,10 @@ TARGET_FPS = 30
 # Separate smoothing for position and rotation
 POS_ALPHA = 0.3  # 0..1 (higher = more immediate)
 ROT_ALPHA = 0.4  # quaternion slerp factor
-
-# Sender/receiver tuning
-MIN_UPDATE_INTERVAL = 1.0 / 60.0  # seconds (default max 60 updates/sec)
-MAX_BATCH_READ = 32  # maximum packets to read per loop (decimate bursts)
+# Rotation safety
+VERBOSE_DEBUG = False
+MAX_ROTATION_DELTA_DEG = 60.0  # per-frame max allowed rotation jump (degrees)
+# Sender/receiver tuning (NOTE: These are the authoritative values - do NOT redeclare below)
 
 INTERP_THREAD = None
 INTERP_RUNNING = False
@@ -211,14 +211,14 @@ PORT = 9000
 ALPHA = 0.6  # smoothing (0..1) higher -> more immediate
 
 # Safety & rate limiting
-MIN_UPDATE_INTERVAL = 1.0 / 60.0  # seconds (max 60 updates/sec)
+MIN_UPDATE_INTERVAL = 1.0 / 30.0  # seconds (max 30 updates/sec to match iOS sender)
 LAST_RECEIVE_TIME = 0.0
 RECEIVED_FRAMES = 0
 DROPPED_FRAMES = 0
 MAX_TRANSLATION = 100.0  # meters - discard if translation magnitude exceeds this
 
 # Receive batching / stats
-MAX_BATCH_READ = 8  # maximum packets to read per loop (decimate bursts)
+MAX_BATCH_READ = 16  # maximum packets to read per loop (decimate bursts)
 STATS_INTERVAL = 5.0  # seconds to print stats
 _LAST_STATS_TIME = 0.0
 
@@ -297,8 +297,14 @@ def _start_interp_thread():
 
 
 def _stop_interp_thread():
-    global INTERP_RUNNING
+    global INTERP_RUNNING, INTERP_THREAD
     INTERP_RUNNING = False
+    if INTERP_THREAD is not None:
+        try:
+            INTERP_THREAD.join(timeout=0.5)
+        except Exception:
+            pass
+        INTERP_THREAD = None
 
 
 def _interp_loop():
@@ -325,9 +331,29 @@ def _interp_loop():
             # lerp position
             a_pos = POS_ALPHA
             new_pos = [last_pos[i] * (1 - a_pos) + tgt_pos[i] * a_pos for i in range(3)]
-            # slerp rotation
+            # slerp rotation with max delta clamping
             a_rot = ROT_ALPHA
-            new_quat = _quat_slerp(last_quat, tgt_quat, a_rot)
+            # compute angle between quaternions
+            dotpq = last_quat[0]*tgt_quat[0] + last_quat[1]*tgt_quat[1] + last_quat[2]*tgt_quat[2] + last_quat[3]*tgt_quat[3]
+            dotpq = max(-1.0, min(1.0, dotpq))
+            angle = 2.0 * math.acos(abs(dotpq))  # angle in radians
+            max_rad = math.radians(MAX_ROTATION_DELTA_DEG)
+            if angle > 1e-6 and angle > max_rad:
+                # limit the effective interpolation fraction so rotation change per frame is <= max_rad
+                frac = max_rad / angle
+                eff_t = min(a_rot, frac)
+                new_quat = _quat_slerp(last_quat, tgt_quat, eff_t)
+                if VERBOSE_DEBUG:
+                    print(f"[MagiCAM DEBUG] Rotation jump {math.degrees(angle):.1f}deg > max {MAX_ROTATION_DELTA_DEG}deg, applying partial slerp t={eff_t:.3f}")
+            else:
+                new_quat = _quat_slerp(last_quat, tgt_quat, a_rot)
+            
+            # clamp small numerical drift
+            nq_len = math.sqrt(sum([c*c for c in new_quat]))
+            if nq_len == 0:
+                new_quat = (1.0, 0.0, 0.0, 0.0)
+            else:
+                new_quat = tuple([c / nq_len for c in new_quat])
 
             # rebuild matrix from quat and pos
             rot_mat = _quat_to_mat(new_quat)
@@ -345,12 +371,13 @@ def _interp_loop():
 
             LAST_MATRIX = final_list
 
-            def _set():
+            # Use default argument to capture the current value (avoid late binding closure issue)
+            def _set(mat=final_list):
                 try:
                     if not cmds.objExists(CAMERA_NAME):
                         cmds.warning(f"Camera '{CAMERA_NAME}' not found")
                         return
-                    cmds.xform(CAMERA_NAME, ws=True, matrix=final_list)
+                    cmds.xform(CAMERA_NAME, ws=True, matrix=mat)
                 except Exception as e:
                     print('Error applying interpolated matrix:', e)
             cmds.evalDeferred(_set)
@@ -444,7 +471,8 @@ def _apply_matrix_to_camera(mat_list):
         final_list = smoothed
     cmds.evalDeferred(lambda *_: _set_matrix(final_list))
 
-def _process_packet(data):
+def _process_packet(data, from_batch=False):
+    """Process a single packet. Set from_batch=True when called with already-batched data to skip rate limiting."""
     global LAST_RECEIVE_TIME, RECEIVED_FRAMES, DROPPED_FRAMES
     try:
         payload = json.loads(data.decode('utf8'))
@@ -459,8 +487,8 @@ def _process_packet(data):
                 DROPPED_FRAMES += 1
                 return
             now = time.time()
-            # Rate limit to avoid overload / UI freeze
-            if now - LAST_RECEIVE_TIME < MIN_UPDATE_INTERVAL:
+            # Rate limit ONLY if not from batch (batch already did the aggregation)
+            if not from_batch and now - LAST_RECEIVE_TIME < MIN_UPDATE_INTERVAL:
                 DROPPED_FRAMES += 1
                 return
             LAST_RECEIVE_TIME = now
@@ -536,10 +564,17 @@ def _server_loop(sock):
                 # compute batch average: mean translation + averaged quaternion
                 pos_sum = [0.0, 0.0, 0.0]
                 quat_sum = [0.0, 0.0, 0.0, 0.0]
-                for m in mats:
+                for i, m in enumerate(mats):
                     tx, ty, tz = m[3], m[7], m[11]
                     pos_sum[0] += tx; pos_sum[1] += ty; pos_sum[2] += tz
                     q = _mat_to_quat(m)
+                    if i == 0:
+                        ref_q = q
+                    else:
+                        # ensure same hemisphere to avoid quaternion cancellation
+                        dotp = q[0]*ref_q[0] + q[1]*ref_q[1] + q[2]*ref_q[2] + q[3]*ref_q[3]
+                        if dotp < 0:
+                            q = (-q[0], -q[1], -q[2], -q[3])
                     quat_sum[0] += q[0]; quat_sum[1] += q[1]; quat_sum[2] += q[2]; quat_sum[3] += q[3]
                 n = len(mats)
                 avg_pos = [p / n for p in pos_sum]
@@ -553,7 +588,8 @@ def _server_loop(sock):
                 rot_mat = _quat_to_mat(avg_quat)
                 avg_mat = list(rot_mat)
                 avg_mat[3], avg_mat[7], avg_mat[11] = avg_pos
-                _process_packet(json.dumps({'type':'pose','matrix':avg_mat,'t':time.time()}).encode('utf8'))
+                # Use from_batch=True to bypass rate limiting since we already aggregated
+                _process_packet(json.dumps({'type':'pose','matrix':avg_mat,'t':time.time()}).encode('utf8'), from_batch=True)
         except Exception as e:
             # if socket was closed from another thread, break cleanly
             print('[MagiCAM] Server loop error:', e)
@@ -666,10 +702,22 @@ def start_server(port=9000, camera='camera1', alpha=0.6, use_osc=False, log_path
 
 def stop_server():
     global SERVER_RUNNING, SERVER_SOCKET, OSC_SERVER, OSC_THREAD, LOG_ENABLED, LOG_FILE
+    global TARGET_MATRIX, LAST_MATRIX, LAST_RECEIVE_TIME, RECEIVED_FRAMES, DROPPED_FRAMES
+    global INTERP_RUNNING, INTERP_THREAD, LAST_QUAT, LAST_POS
     if not SERVER_RUNNING:
         return
     SERVER_RUNNING = False
     print('Server stopping...')
+    
+    # Stop interpolation thread first
+    INTERP_RUNNING = False
+    if INTERP_THREAD is not None:
+        try:
+            INTERP_THREAD.join(timeout=0.5)
+        except Exception:
+            pass
+        INTERP_THREAD = None
+    
     # send empty packet to wake the select/recv loop
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -702,6 +750,16 @@ def stop_server():
     # disable logging
     LOG_ENABLED = False
     LOG_FILE = None
+    
+    # Reset state for clean restart
+    TARGET_MATRIX = None
+    LAST_RECEIVE_TIME = 0.0
+    LAST_QUAT = None
+    LAST_POS = None
+    # Note: Keep LAST_MATRIX so camera position persists, reset counters
+    RECEIVED_FRAMES = 0
+    DROPPED_FRAMES = 0
+    print('[MagiCAM] Server stopped and state reset')
 
 
 def calibrate():
@@ -827,6 +885,8 @@ def show_ui():
     _UI_ELEMENTS['rotAlpha'] = cmds.floatFieldGrp(numberOfFields=1, label='Rot Alpha', value1=prefs.get('rot_alpha', ROT_ALPHA))
     _UI_ELEMENTS['minInterval'] = cmds.floatFieldGrp(numberOfFields=1, label='Min Interval (s)', value1=prefs.get('min_interval', MIN_UPDATE_INTERVAL))
     _UI_ELEMENTS['maxBatch'] = cmds.intFieldGrp(numberOfFields=1, label='Max Batch Read', value1=prefs.get('max_batch', MAX_BATCH_READ))
+    _UI_ELEMENTS['verboseDebug'] = cmds.checkBox(label='Verbose Debug', value=prefs.get('verbose_debug', VERBOSE_DEBUG))
+    _UI_ELEMENTS['maxRotDeg'] = cmds.floatFieldGrp(numberOfFields=1, label='Max Rot Delta (deg)', value1=prefs.get('max_rot_deg', MAX_ROTATION_DELTA_DEG))
 
     cmds.separator(height=10)
     cmds.rowLayout(numberOfColumns=5)
@@ -865,8 +925,10 @@ def _ui_start():
     rot_alpha = cmds.floatFieldGrp(_UI_ELEMENTS['rotAlpha'], q=True, value1=True)
     min_interval = cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], q=True, value1=True)
     max_batch = cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], q=True, value1=True)
+    verbose = cmds.checkBox(_UI_ELEMENTS['verboseDebug'], q=True, value=True)
+    max_rot_deg = cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], q=True, value1=True)
 
-    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ
+    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, VERBOSE_DEBUG, MAX_ROTATION_DELTA_DEG
     SMOOTH_MODE = mode
     SMOOTH_ALPHA = alpha
     TARGET_FPS = fps
@@ -875,6 +937,8 @@ def _ui_start():
     ROT_ALPHA = rot_alpha
     MIN_UPDATE_INTERVAL = max(1e-4, min_interval)
     MAX_BATCH_READ = max(1, max_batch)
+    VERBOSE_DEBUG = bool(verbose)
+    MAX_ROTATION_DELTA_DEG = float(max_rot_deg)
 
     # reset filters if using predictive mode
     if SMOOTH_MODE in ('alpha_beta', 'kalman'):
@@ -927,6 +991,78 @@ def create_shelf_button(shelf_name='MagiCAM'):
         print(f'Shelf button created in shelf {shelf_name}')
     except Exception as e:
         print('Failed to create shelf button:', e)
+
+
+# Debug helpers for interactive troubleshooting in Maya
+def force_apply_matrix(matrix):
+    """Immediately apply a 4x4 row-major matrix to the configured camera (synchronous)."""
+    try:
+        if not cmds.objExists(CAMERA_NAME):
+            print(f"[MagiCAM DEBUG] Camera '{CAMERA_NAME}' not found")
+            return False
+        # Apply immediately (synchronous)
+        cmds.xform(CAMERA_NAME, ws=True, matrix=matrix)
+        print(f"[MagiCAM DEBUG] force_applied matrix to {CAMERA_NAME}")
+        return True
+    except Exception as e:
+        print('[MagiCAM DEBUG] force_apply_matrix error:', e)
+        return False
+
+
+def force_apply_last():
+    """Force-apply the last received matrix (bypasses smoothing/interp)."""
+    try:
+        if LAST_MATRIX is None:
+            print('[MagiCAM DEBUG] No LAST_MATRIX available to apply')
+            return False
+        return force_apply_matrix(LAST_MATRIX)
+    except Exception as e:
+        print('[MagiCAM DEBUG] force_apply_last error:', e)
+        return False
+
+
+def diagnose():
+    """Print comprehensive diagnostic info about current MagiCAM state."""
+    print("=" * 60)
+    print("MagiCAM DIAGNOSTIC REPORT")
+    print("=" * 60)
+    print(f"SERVER_RUNNING: {SERVER_RUNNING}")
+    print(f"CAMERA_NAME: {CAMERA_NAME}")
+    print(f"PORT: {PORT}")
+    print(f"SMOOTH_MODE: {SMOOTH_MODE}")
+    print(f"RECEIVED_FRAMES: {RECEIVED_FRAMES}")
+    print(f"DROPPED_FRAMES: {DROPPED_FRAMES}")
+    print(f"MIN_UPDATE_INTERVAL: {MIN_UPDATE_INTERVAL}")
+    print(f"MAX_BATCH_READ: {MAX_BATCH_READ}")
+    print(f"POS_ALPHA: {POS_ALPHA}")
+    print(f"ROT_ALPHA: {ROT_ALPHA}")
+    print(f"VERBOSE_DEBUG: {VERBOSE_DEBUG}")
+    print(f"INTERP_RUNNING: {INTERP_RUNNING}")
+    print(f"TARGET_MATRIX: {TARGET_MATRIX is not None}")
+    print(f"LAST_MATRIX: {LAST_MATRIX is not None}")
+    print(f"CALIB_MATRIX: {CALIB_MATRIX is not None}")
+    
+    # Check camera
+    try:
+        if cmds.objExists(CAMERA_NAME):
+            cam_mat = cmds.xform(CAMERA_NAME, q=True, ws=True, matrix=True)
+            print(f"Camera '{CAMERA_NAME}' exists")
+            print(f"  Current matrix[3,7,11] (pos): {cam_mat[3]:.4f}, {cam_mat[7]:.4f}, {cam_mat[11]:.4f}")
+        else:
+            print(f"Camera '{CAMERA_NAME}' DOES NOT EXIST!")
+    except Exception as e:
+        print(f"Error checking camera: {e}")
+    
+    if LAST_MATRIX:
+        print(f"LAST_MATRIX[3,7,11] (pos): {LAST_MATRIX[3]:.4f}, {LAST_MATRIX[7]:.4f}, {LAST_MATRIX[11]:.4f}")
+    if TARGET_MATRIX:
+        print(f"TARGET_MATRIX[3,7,11] (pos): {TARGET_MATRIX[3]:.4f}, {TARGET_MATRIX[7]:.4f}, {TARGET_MATRIX[11]:.4f}")
+    
+    print("=" * 60)
+    print("To test camera movement, run:")
+    print("  maya_receiver.force_apply_matrix([1,0,0,1, 0,1,0,2, 0,0,1,3, 0,0,0,1])")
+    print("=" * 60)
+    return True
 
 
 if __name__ == '__main__':
