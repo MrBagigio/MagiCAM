@@ -8,7 +8,7 @@
 		8C9E3B2A1F6E4F3B002A1B6C /* ARKitSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B6B /* ARKitSender.swift */; };
 		8C9E3B2A1F6E4F3B002A1B6D /* ARKitSenderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B6A /* ARKitSenderApp.swift */; };
 		8C9E3B2A1F6E4F3B002A1B6E /* ARSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B69 /* ARSessionManager.swift */; };
-		8C9E3B2A1F6E4F3B002A1B6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B75 /* ContentView.swift */; };
+		8C9E3B2A1F6E4F3B002A1B6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B79 /* ContentView.swift */; };
 		/* End PBXBuildFile section */
 
 		/* Begin PBXSourcesBuildPhase section */
@@ -29,7 +29,7 @@
 		8C9E3B2A1F6E4F3B002A1B69 /* ARSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARSessionManager.swift; sourceTree = "<group>"; };
 		8C9E3B2A1F6E4F3B002A1B6A /* ARKitSenderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARKitSenderApp.swift; sourceTree = "<group>"; };
 		8C9E3B2A1F6E4F3B002A1B6B /* ARKitSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARKitSender.swift; sourceTree = "<group>"; };
-		8C9E3B2A1F6E4F3B002A1B75 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ContentView.swift; sourceTree = "<group>"; };
+		8C9E3B2A1F6E4F3B002A1B79 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ContentView.swift; sourceTree = "<group>"; };
 		8C9E3B2A1F6E4F3B002A1B6F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = swift/Info.plist; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
@@ -41,6 +41,7 @@
 				8C9E3B2A1F6E4F3B002A1B69,
 				8C9E3B2A1F6E4F3B002A1B6A,
 				8C9E3B2A1F6E4F3B002A1B6B,
+				8C9E3B2A1F6E4F3B002A1B79,
 			);
 			path = "";
 			sourceTree = "<group>";
