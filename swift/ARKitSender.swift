@@ -32,14 +32,22 @@ class ViewController: UIViewController, ARSessionDelegate {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         // Get camera transform (simd_float4x4)
         let mat = frame.camera.transform
-        // Flatten to row-major array [r0c0, r0c1, ... r3c3]
-        var arr: [Float] = []
-        for r in 0..<4 {
-            for c in 0..<4 {
-                let value = mat[c][r] // simd uses columns, so access as [column][row]
-                arr.append(value)
-            }
-        }
+        
+        // Build row-major 4x4 matrix for Maya
+        // Translation at positions [3, 7, 11], scaled to cm (ARKit uses meters)
+        let c0 = mat.columns.0
+        let c1 = mat.columns.1
+        let c2 = mat.columns.2
+        let c3 = mat.columns.3
+        let scale: Float = 100.0 // meters to cm
+        
+        let arr: [Float] = [
+            c0.x, c1.x, c2.x, c3.x * scale,
+            c0.y, c1.y, c2.y, c3.y * scale,
+            c0.z, c1.z, c2.z, c3.z * scale,
+            0.0,  0.0,  0.0,  1.0
+        ]
+        
         let payload: [String: Any] = ["type": "pose", "matrix": arr, "t": Date().timeIntervalSince1970]
         do {
             let data = try JSONSerialization.data(withJSONObject: payload, options: [])

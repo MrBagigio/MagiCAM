@@ -39,16 +39,16 @@ OSC_SERVER = None
 OSC_THREAD = None
 
 # Advanced smoothing / interpolation globals
-SMOOTH_MODE = 'matrix_interp'  # 'matrix_exp' | 'matrix_interp' | 'none' | 'alpha_beta' | 'kalman'
+SMOOTH_MODE = 'none'  # 'matrix_exp' | 'matrix_interp' | 'none' | 'alpha_beta' | 'kalman'
 SMOOTH_ALPHA = 0.25
-TARGET_FPS = 30
+TARGET_FPS = 60  # Higher FPS for smoother tracking
 
-# Separate smoothing for position and rotation
-POS_ALPHA = 0.3  # 0..1 (higher = more immediate)
-ROT_ALPHA = 0.4  # quaternion slerp factor
+# Separate smoothing for position and rotation (used when SMOOTH_MODE='matrix_interp')
+POS_ALPHA = 0.8  # 0..1 (higher = more immediate) - increased for more responsive position
+ROT_ALPHA = 0.8  # quaternion slerp factor - increased for more responsive rotation
 # Rotation safety
 VERBOSE_DEBUG = False
-MAX_ROTATION_DELTA_DEG = 60.0  # per-frame max allowed rotation jump (degrees)
+MAX_ROTATION_DELTA_DEG = 180.0  # Allow full rotation range for faithful tracking
 # Sender/receiver tuning (NOTE: These are the authoritative values - do NOT redeclare below)
 
 INTERP_THREAD = None
@@ -211,14 +211,14 @@ PORT = 9000
 ALPHA = 0.6  # smoothing (0..1) higher -> more immediate
 
 # Safety & rate limiting
-MIN_UPDATE_INTERVAL = 1.0 / 30.0  # seconds (max 30 updates/sec to match iOS sender)
+MIN_UPDATE_INTERVAL = 1.0 / 60.0  # seconds (max 60 updates/sec for smooth tracking)
 LAST_RECEIVE_TIME = 0.0
 RECEIVED_FRAMES = 0
 DROPPED_FRAMES = 0
-MAX_TRANSLATION = 100.0  # meters - discard if translation magnitude exceeds this
+MAX_TRANSLATION = 10000.0  # cm - increased for cm units (100m in cm)
 
 # Receive batching / stats
-MAX_BATCH_READ = 16  # maximum packets to read per loop (decimate bursts)
+MAX_BATCH_READ = 1  # Process each packet immediately for faithful tracking
 STATS_INTERVAL = 5.0  # seconds to print stats
 _LAST_STATS_TIME = 0.0
 
@@ -841,6 +841,54 @@ def disable_logging():
     print('Logging disabled')
 
 
+def _apply_preset_faithful():
+    """Apply 1:1 faithful tracking preset - no smoothing, direct matrix application."""
+    try:
+        cmds.optionMenuGrp(_UI_ELEMENTS['modeMenu'], e=True, value='none')
+        cmds.floatSliderGrp(_UI_ELEMENTS['alphaField'], e=True, value=1.0)
+        cmds.intFieldGrp(_UI_ELEMENTS['fpsField'], e=True, value1=60)
+        cmds.floatFieldGrp(_UI_ELEMENTS['posAlpha'], e=True, value1=1.0)
+        cmds.floatFieldGrp(_UI_ELEMENTS['rotAlpha'], e=True, value1=1.0)
+        cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], e=True, value1=0.0)
+        cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], e=True, value1=1)
+        cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], e=True, value1=180.0)
+        print('[MagiCAM] Preset FAITHFUL applied - direct 1:1 tracking')
+    except Exception as e:
+        print('[MagiCAM] Preset error:', e)
+
+
+def _apply_preset_smooth():
+    """Apply smooth tracking preset - interpolated for cinematic feel."""
+    try:
+        cmds.optionMenuGrp(_UI_ELEMENTS['modeMenu'], e=True, value='matrix_interp')
+        cmds.floatSliderGrp(_UI_ELEMENTS['alphaField'], e=True, value=0.25)
+        cmds.intFieldGrp(_UI_ELEMENTS['fpsField'], e=True, value1=30)
+        cmds.floatFieldGrp(_UI_ELEMENTS['posAlpha'], e=True, value1=0.4)
+        cmds.floatFieldGrp(_UI_ELEMENTS['rotAlpha'], e=True, value1=0.5)
+        cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], e=True, value1=0.033)
+        cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], e=True, value1=8)
+        cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], e=True, value1=45.0)
+        print('[MagiCAM] Preset SMOOTH applied - interpolated cinematic tracking')
+    except Exception as e:
+        print('[MagiCAM] Preset error:', e)
+
+
+def _apply_preset_predictive():
+    """Apply predictive tracking preset - alpha-beta filter for natural motion."""
+    try:
+        cmds.optionMenuGrp(_UI_ELEMENTS['modeMenu'], e=True, value='alpha_beta')
+        cmds.floatSliderGrp(_UI_ELEMENTS['alphaField'], e=True, value=0.5)
+        cmds.intFieldGrp(_UI_ELEMENTS['fpsField'], e=True, value1=60)
+        cmds.floatFieldGrp(_UI_ELEMENTS['posAlpha'], e=True, value1=0.6)
+        cmds.floatFieldGrp(_UI_ELEMENTS['rotAlpha'], e=True, value1=0.6)
+        cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], e=True, value1=0.016)
+        cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], e=True, value1=4)
+        cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], e=True, value1=90.0)
+        print('[MagiCAM] Preset PREDICTIVE applied - alpha-beta filtered tracking')
+    except Exception as e:
+        print('[MagiCAM] Preset error:', e)
+
+
 def apply_test_identity():
     idm = [1.0,0.0,0.0,0.0,
            0.0,1.0,0.0,0.0,
@@ -855,7 +903,7 @@ def show_ui():
     prefs = load_prefs()
     if cmds.window(_UI_WINDOW_NAME, exists=True):
         cmds.deleteUI(_UI_WINDOW_NAME)
-    win = cmds.window(_UI_WINDOW_NAME, title='MagiCAM Receiver', widthHeight=(480,360))
+    win = cmds.window(_UI_WINDOW_NAME, title='MagiCAM Receiver', widthHeight=(520,420))
     cmds.columnLayout(adjustableColumn=True)
 
     cmds.text(label='Server settings')
@@ -864,11 +912,19 @@ def show_ui():
     _UI_ELEMENTS['oscCheck'] = cmds.checkBox(label='Use OSC', value=prefs.get('use_osc', False))
 
     cmds.separator(height=10)
+    cmds.text(label='Presets', font='boldLabelFont')
+    cmds.rowLayout(numberOfColumns=3)
+    cmds.button(label='Faithful (1:1)', command=lambda *_: _apply_preset_faithful(), bgc=(0.2, 0.6, 0.2))
+    cmds.button(label='Smooth', command=lambda *_: _apply_preset_smooth(), bgc=(0.2, 0.4, 0.6))
+    cmds.button(label='Predictive', command=lambda *_: _apply_preset_predictive(), bgc=(0.5, 0.3, 0.5))
+    cmds.setParent('..')
+
+    cmds.separator(height=10)
     cmds.text(label='Smoothing')
     _UI_ELEMENTS['modeMenu'] = cmds.optionMenuGrp(label='Mode')
-    cmds.menuItem(label='matrix_exp')
-    cmds.menuItem(label='matrix_interp')
     cmds.menuItem(label='none')
+    cmds.menuItem(label='matrix_interp')
+    cmds.menuItem(label='matrix_exp')
     cmds.menuItem(label='alpha_beta')
     cmds.menuItem(label='kalman')
     # set menu to saved mode
