@@ -81,8 +81,8 @@
 		/* End PBXProject section */
 
 		/* Begin XCBuildConfiguration section */
-		8C9E3B2A1F6E4F3B002A1B77 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 13.0; }; name = Release; };
-		8C9E3B2A1F6E4F3B002A1B78 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 13.0; }; name = Debug; };
+		8C9E3B2A1F6E4F3B002A1B77 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SWIFT_VERSION = 5.0; }; name = Release; };
+		8C9E3B2A1F6E4F3B002A1B78 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 13.0; SWIFT_VERSION = 5.0; }; name = Debug; };
 		8C9E3B2A1F6E4F3B002A1B73 /* Build configuration list for PBXNativeTarget "MagiCAM" */ = {isa = XCConfigurationList; buildConfigurations = (8C9E3B2A1F6E4F3B002A1B78,8C9E3B2A1F6E4F3B002A1B77); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		8C9E3B2A1F6E4F3B002A1B76 /* Build configuration list for PBXProject "MagiCAM" */ = {isa = XCConfigurationList; buildConfigurations = (8C9E3B2A1F6E4F3B002A1B78,8C9E3B2A1F6E4F3B002A1B77); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 		/* End XCBuildConfiguration section */
