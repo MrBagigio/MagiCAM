@@ -4,23 +4,63 @@
 <dict>
     <key>CFBundleName</key>
     <string>MagiCAM</string>
+    <key>CFBundleDisplayName</key>
+    <string>MagiCAM</string>
     <key>CFBundleIdentifier</key>
-    <string>com.example.MagiCAM</string>
+    <string>com.magicam.arkitsender</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1</string>
+    <string>0.1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>MinimumOSVersion</key>
+    <string>15.0</string>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
-        <string>armv7</string>
+        <string>arkit</string>
+        <string>arm64</string>
     </array>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string>LaunchScreenBackground</string>
+    </dict>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
     <key>NSCameraUsageDescription</key>
-    <string>This app uses the camera for AR tracking to send device pose to Maya.</string>
+    <string>MagiCAM uses the camera for AR tracking to send device pose to Maya.</string>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>This app uses the local network to send pose data to your computer.</string>
+    <string>MagiCAM uses the local network to send camera pose data to your computer running Maya.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_magicam._udp</string>
+    </array>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict/>
+    </dict>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
 </dict>
 </plist>

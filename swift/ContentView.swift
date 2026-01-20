@@ -130,7 +130,6 @@ struct ContentView: View {
                 Image(systemName: isRunning ? "wave.3.right" : "antenna.radiowaves.left.and.right.slash")
                     .font(.system(size: 36))
                     .foregroundColor(isRunning ? .green : .gray)
-                    .symbolEffect(.pulse, isActive: isRunning)
             }
             
             Text(isRunning ? "STREAMING" : "OFFLINE")
