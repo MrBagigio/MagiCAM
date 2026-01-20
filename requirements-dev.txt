@@ -1,0 +1,5 @@
+pytest
+python-osc
+freezegun
+pytest-mock
+matplotlib

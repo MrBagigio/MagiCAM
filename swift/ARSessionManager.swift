@@ -9,6 +9,14 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     var host: String = "192.168.1.100"
     var port: UInt16 = 9000
 
+    // Throttling and change detection
+    private var lastSend: TimeInterval = 0
+    private let minInterval: TimeInterval = 1.0 / 30.0 // 30 Hz
+    private let transThreshold: Float = 0.01 // meters
+    private let rotThreshold: Float = 0.01 // approx radians
+    private var lastPos: SIMD3<Float>? = nil
+    private var lastQuat: simd_quatf? = nil
+
     func start(host: String, port: UInt16) {
         self.host = host
         self.port = port
@@ -39,8 +47,36 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        // send pose messages regularly
+        // Throttle sending and only send on significant change
+        let now = Date().timeIntervalSince1970
+        if now - lastSend < minInterval { return }
+
         let mat = frame.camera.transform
+        // extract translation and rotation quaternion
+        let col3 = mat.columns.3
+        let pos = SIMD3<Float>(col3.x, col3.y, col3.z)
+        let rot = simd_quaternion(mat)
+
+        var send = false
+        if let lp = lastPos {
+            let d = simd_length(pos - lp)
+            if d > transThreshold { send = true }
+        } else {
+            send = true
+        }
+        if let lq = lastQuat {
+            let dq = abs(simd_dot(rot.vector, lq.vector))
+            // if rotation changed more than threshold (approx) send
+            if dq < (1 - rotThreshold) { send = true }
+        } else {
+            send = true
+        }
+
+        if !send { return }
+        lastPos = pos
+        lastQuat = rot
+        lastSend = now
+
         var arr: [Float] = []
         for r in 0..<4 {
             for c in 0..<4 {
@@ -48,7 +84,7 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
                 arr.append(value)
             }
         }
-        let payload: [String: Any] = ["type":"pose", "matrix": arr, "t": Date().timeIntervalSince1970]
+        let payload: [String: Any] = ["type":"pose", "matrix": arr, "t": now]
         sendPayload(payload)
     }
 

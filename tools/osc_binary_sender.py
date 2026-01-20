@@ -14,21 +14,15 @@ except Exception as e:
     print('python-osc not installed. Install with: python -m pip install python-osc')
     raise
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--host', default='127.0.0.1')
-parser.add_argument('--port', type=int, default=9000)
-parser.add_argument('--type', choices=['pose_bin','calib_bin'], default='pose_bin')
-args = parser.parse_args()
+def main(args):
+    client = udp_client.SimpleUDPClient(args.host, args.port)
 
-client = udp_client.SimpleUDPClient(args.host, args.port)
+    def make_rot_z(theta):
+        import math
+        c = math.cos(theta)
+        s = math.sin(theta)
+        return [c,-s,0,0, s,c,0,0, 0,0,1,0, 0,0,0,1]
 
-def make_rot_z(theta):
-    import math
-    c = math.cos(theta)
-    s = math.sin(theta)
-    return [c,-s,0,0, s,c,0,0, 0,0,1,0, 0,0,0,1]
-
-if __name__ == '__main__':
     t=0.0
     while True:
         mat = make_rot_z(t)
@@ -39,3 +33,11 @@ if __name__ == '__main__':
         client.send(msg)
         t += 0.05
         time.sleep(0.05)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=9000)
+    parser.add_argument('--type', choices=['pose_bin','calib_bin'], default='pose_bin')
+    args = parser.parse_args()
+    main(args)

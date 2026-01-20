@@ -1,0 +1,103 @@
+// !@$*UTF8*@!$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 55;
+	objects = {
+		/* Begin PBXBuildFile section */
+		8C9E3B2A1F6E4F3B002A1B6C /* ARKitSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B6B /* ARKitSender.swift */; };
+		8C9E3B2A1F6E4F3B002A1B6D /* ARKitSenderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B6A /* ARKitSenderApp.swift */; };
+		8C9E3B2A1F6E4F3B002A1B6E /* ARSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B69 /* ARSessionManager.swift */; };
+		8C9E3B2A1F6E4F3B002A1B6F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E3B2A1F6E4F3B002A1B79 /* ContentView.swift */; };
+		/* End PBXBuildFile section */
+
+		/* Begin PBXSourcesBuildPhase section */
+		8C9E3B2A1F6E4F3B002A1B70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8C9E3B2A1F6E4F3B002A1B6C,
+				8C9E3B2A1F6E4F3B002A1B6D,
+				8C9E3B2A1F6E4F3B002A1B6E,
+				8C9E3B2A1F6E4F3B002A1B6F,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		/* End PBXSourcesBuildPhase section */
+
+		/* Begin PBXFileReference section */
+		8C9E3B2A1F6E4F3B002A1B69 /* ARSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARSessionManager.swift; sourceTree = "<group>"; };
+		8C9E3B2A1F6E4F3B002A1B6A /* ARKitSenderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARKitSenderApp.swift; sourceTree = "<group>"; };
+		8C9E3B2A1F6E4F3B002A1B6B /* ARKitSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARKitSender.swift; sourceTree = "<group>"; };
+		8C9E3B2A1F6E4F3B002A1B79 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ContentView.swift; sourceTree = "<group>"; };
+		8C9E3B2A1F6E4F3B002A1B6F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = swift/Info.plist; sourceTree = "<group>"; };
+		/* End PBXFileReference section */
+
+		/* Begin PBXGroup section */
+		8C9E3B2A1F6E4F3B002A1B71 = {
+			isa = PBXGroup;
+			children = (
+				8C9E3B2A1F6E4F3B002A1B6F,
+				8C9E3B2A1F6E4F3B002A1B69,
+				8C9E3B2A1F6E4F3B002A1B6A,
+				8C9E3B2A1F6E4F3B002A1B6B,
+				8C9E3B2A1F6E4F3B002A1B79,
+			);
+			path = "";
+			sourceTree = "<group>";
+		};
+		/* End PBXGroup section */
+
+		/* Begin PBXNativeTarget section */
+		8C9E3B2A1F6E4F3B002A1B72 /* MagiCAM */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8C9E3B2A1F6E4F3B002A1B73 /* Build configuration list for PBXNativeTarget "MagiCAM" */;
+			buildPhases = (
+				8C9E3B2A1F6E4F3B002A1B70 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MagiCAM;
+			productName = MagiCAM;
+			productReference = 8C9E3B2A1F6E4F3B002A1B74 /* MagiCAM.app */;
+			productType = "com.apple.product-type.application";
+		};
+		/* End PBXNativeTarget section */
+
+		/* Begin PBXProject section */
+		8C9E3B2A1F6E4F3B002A1B75 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1320;
+			};
+			buildConfigurationList = 8C9E3B2A1F6E4F3B002A1B76 /* Build configuration list for PBXProject "MagiCAM" */;
+			compatibilityVersion = "Xcode 12.0";
+			hasScannedForEncodings = 0;
+			mainGroup = 8C9E3B2A1F6E4F3B002A1B71;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8C9E3B2A1F6E4F3B002A1B72,
+			);
+		};
+		/* End PBXProject section */
+
+		/* Begin XCBuildConfiguration section */
+		8C9E3B2A1F6E4F3B002A1B77 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 5.0; PRODUCT_NAME = "MagiCAM"; }; name = Release; };
+		8C9E3B2A1F6E4F3B002A1B78 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { CODE_SIGNING_ALLOWED = NO; INFOPLIST_FILE = "swift/Info.plist"; PRODUCT_BUNDLE_IDENTIFIER = "com.example.MagiCAM"; IPHONEOS_DEPLOYMENT_TARGET = 14.0; SWIFT_VERSION = 5.0; PRODUCT_NAME = "MagiCAM"; }; name = Debug; };
+		8C9E3B2A1F6E4F3B002A1B73 /* Build configuration list for PBXNativeTarget "MagiCAM" */ = {isa = XCConfigurationList; buildConfigurations = (8C9E3B2A1F6E4F3B002A1B78,8C9E3B2A1F6E4F3B002A1B77); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		8C9E3B2A1F6E4F3B002A1B76 /* Build configuration list for PBXProject "MagiCAM" */ = {isa = XCConfigurationList; buildConfigurations = (8C9E3B2A1F6E4F3B002A1B78,8C9E3B2A1F6E4F3B002A1B77); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		/* End XCBuildConfiguration section */
+
+		/* Begin PBXContainerItemProxy section */
+		/* End PBXContainerItemProxy section */
+
+		/* Begin PBXReferenceProxy section */
+		8C9E3B2A1F6E4F3B002A1B74 /* MagiCAM.app */ = {isa = PBXFileReference; lastKnownFileType = wrapper.application; path = MagiCAM.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		/* End PBXReferenceProxy section */
+
+	};
+	rootObject = 8C9E3B2A1F6E4F3B002A1B75 /* Project object */;
+}

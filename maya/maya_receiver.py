@@ -39,9 +39,18 @@ OSC_SERVER = None
 OSC_THREAD = None
 
 # Advanced smoothing / interpolation globals
-SMOOTH_MODE = 'matrix_exp'  # 'matrix_exp' | 'matrix_interp' | 'none' | 'alpha_beta' | 'kalman'
-SMOOTH_ALPHA = 0.6
-TARGET_FPS = 60
+SMOOTH_MODE = 'matrix_interp'  # 'matrix_exp' | 'matrix_interp' | 'none' | 'alpha_beta' | 'kalman'
+SMOOTH_ALPHA = 0.25
+TARGET_FPS = 30
+
+# Separate smoothing for position and rotation
+POS_ALPHA = 0.3  # 0..1 (higher = more immediate)
+ROT_ALPHA = 0.4  # quaternion slerp factor
+
+# Sender/receiver tuning
+MIN_UPDATE_INTERVAL = 1.0 / 60.0  # seconds (default max 60 updates/sec)
+MAX_BATCH_READ = 32  # maximum packets to read per loop (decimate bursts)
+
 INTERP_THREAD = None
 INTERP_RUNNING = False
 TARGET_MATRIX = None
@@ -200,6 +209,19 @@ SERVER_RUNNING = False
 CAMERA_NAME = 'camera1'
 PORT = 9000
 ALPHA = 0.6  # smoothing (0..1) higher -> more immediate
+
+# Safety & rate limiting
+MIN_UPDATE_INTERVAL = 1.0 / 60.0  # seconds (max 60 updates/sec)
+LAST_RECEIVE_TIME = 0.0
+RECEIVED_FRAMES = 0
+DROPPED_FRAMES = 0
+MAX_TRANSLATION = 100.0  # meters - discard if translation magnitude exceeds this
+
+# Receive batching / stats
+MAX_BATCH_READ = 8  # maximum packets to read per loop (decimate bursts)
+STATS_INTERVAL = 5.0  # seconds to print stats
+_LAST_STATS_TIME = 0.0
+
 CALIB_MATRIX = None  # 4x4 list
 LAST_MATRIX = None
 
@@ -210,37 +232,59 @@ def _rowlist_to_mmatrix(lst):
 
 
 def _orthonormalize_rotation(mat_list):
-    """Simple Gram-Schmidt orthonormalization on the 3x3 rotation part of a 4x4 row-major matrix list."""
-    # Extract 3x3 columns
-    # mat_list is row-major: m[row*4 + col]
-    col0 = [mat_list[0], mat_list[4], mat_list[8]]
-    col1 = [mat_list[1], mat_list[5], mat_list[9]]
-    col2 = [mat_list[2], mat_list[6], mat_list[10]]
+    """Simple Gram-Schmidt orthonormalization on the 3x3 rotation part of a 4x4 row-major matrix list.
+    DISABLED: This was corrupting scale. Return matrix unchanged."""
+    # Orthonormalization disabled - it was causing scale corruption
+    # Just return the matrix as-is to preserve original transform
+    return mat_list
 
-    def norm(v):
-        return math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2])
-    def normalize(v):
-        n = norm(v)
-        if n == 0: return [0,0,0]
-        return [v[0]/n, v[1]/n, v[2]/n]
-    def dot(a,b):
-        return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]
-    def sub(a,b,scale=1.0):
-        return [a[0]-b[0]*scale, a[1]-b[1]*scale, a[2]-b[2]*scale]
 
-    u0 = normalize(col0)
-    proj1 = [u0[i]*dot(u0,col1) for i in range(3)]
-    u1 = normalize(sub(col1, proj1))
-    proj2 = [u0[i]*dot(u0,col2) + u1[i]*dot(u1,col2) for i in range(3)]
-    u2 = normalize(sub(col2, proj2))
+def _validate_matrix(m):
+    """Validate incoming 4x4 row-major matrix: finite numbers, reasonable translation magnitude."""
+    try:
+        if not m or len(m) != 16:
+            return False
+        for v in m:
+            if not isinstance(v, (int, float)):
+                return False
+            if math.isinf(v) or math.isnan(v):
+                return False
+        tx, ty, tz = m[3], m[7], m[11]
+        if math.sqrt(tx*tx + ty*ty + tz*tz) > MAX_TRANSLATION:
+            print(f"[MagiCAM] Dropping matrix with huge translation: {tx:.3f},{ty:.3f},{tz:.3f}")
+            return False
+        return True
+    except Exception as e:
+        print('Matrix validation error:', e)
+        return False
 
-    # Rebuild into a new matrix list (row-major)
-    new = list(mat_list)
-    # set rotation entries
-    new[0], new[4], new[8]  = u0[0], u0[1], u0[2]
-    new[1], new[5], new[9]  = u1[0], u1[1], u1[2]
-    new[2], new[6], new[10] = u2[0], u2[1], u2[2]
-    return new
+
+def _arkit_to_maya_matrix(mat_list):
+    """Convert ARKit row-major matrix to Maya coordinate system.
+    ARKit: Right-handed, Y-up (gravity), -Z forward
+    Maya: Right-handed, Y-up, Z forward (or configurable)
+    
+    The main issue is that ARKit camera looks down -Z, Maya camera looks down -Z too,
+    but the coordinate frames may differ. For now, we apply a simple flip if needed.
+    
+    ARKit matrix is already row-major from the iOS app (it does mat[c][r]).
+    Maya's xform expects row-major as well, so no transpose needed.
+    
+    However, ARKit's translation is in the last COLUMN of a column-major matrix,
+    which after our row-major conversion ends up at indices 12,13,14.
+    But the iOS code does mat[c][r] which actually transposes it, putting translation at 3,7,11.
+    
+    Let's verify: iOS sends mat[c][r] for r,c in 0..3
+    - Original simd_float4x4 is column-major: columns are mat[0], mat[1], mat[2], mat[3]
+    - mat[c][r] reads column c, row r
+    - Looping r then c: arr = [mat[0][0], mat[1][0], mat[2][0], mat[3][0], mat[0][1], ...]
+    - This produces a ROW of the matrix per 4 elements = row-major
+    - Translation is in column 3 (mat[3]) = indices 3, 7, 11 in row-major
+    
+    So translation should be at indices 3, 7, 11 (tx, ty, tz).
+    """
+    # Return as-is - the format should already be correct
+    return mat_list
 
 
 def _start_interp_thread():
@@ -258,7 +302,8 @@ def _stop_interp_thread():
 
 
 def _interp_loop():
-    """Run at TARGET_FPS and interpolate LAST_MATRIX towards TARGET_MATRIX using alpha per frame derived from SMOOTH_ALPHA."""
+    """Run at TARGET_FPS and interpolate LAST_MATRIX towards TARGET_MATRIX using separate pos/rot smoothing.
+    Uses POS_ALPHA for translation (lerp) and ROT_ALPHA for rotation (slerp), at a fixed target FPS."""
     global TARGET_MATRIX, LAST_MATRIX
     interval = 1.0 / max(1, TARGET_FPS)
     while INTERP_RUNNING:
@@ -271,18 +316,34 @@ def _interp_loop():
         if LAST_MATRIX is None:
             LAST_MATRIX = tgt
         else:
-            a = SMOOTH_ALPHA
-            LAST_MATRIX = [LAST_MATRIX[i] * (1 - a) + tgt[i] * a for i in range(16)]
-            # orthonormalize rotation portion to avoid drift
-            LAST_MATRIX = _orthonormalize_rotation(LAST_MATRIX)
+            # extract pos and quat
+            tgt_pos = [tgt[3], tgt[7], tgt[11]]
+            tgt_quat = _mat_to_quat(tgt)
+            last_pos = [LAST_MATRIX[3], LAST_MATRIX[7], LAST_MATRIX[11]]
+            last_quat = _mat_to_quat(LAST_MATRIX)
+
+            # lerp position
+            a_pos = POS_ALPHA
+            new_pos = [last_pos[i] * (1 - a_pos) + tgt_pos[i] * a_pos for i in range(3)]
+            # slerp rotation
+            a_rot = ROT_ALPHA
+            new_quat = _quat_slerp(last_quat, tgt_quat, a_rot)
+
+            # rebuild matrix from quat and pos
+            rot_mat = _quat_to_mat(new_quat)
+            final = list(rot_mat)
+            final[3], final[7], final[11] = new_pos
+
             # apply calibration
             if CALIB_MATRIX is not None:
                 mm_calib = _rowlist_to_mmatrix(CALIB_MATRIX)
-                mm_sm = _rowlist_to_mmatrix(LAST_MATRIX)
+                mm_sm = _rowlist_to_mmatrix(final)
                 mm_final = mm_calib * mm_sm
                 final_list = list(mm_final)
             else:
-                final_list = LAST_MATRIX
+                final_list = final
+
+            LAST_MATRIX = final_list
 
             def _set():
                 try:
@@ -301,6 +362,10 @@ def _interp_loop():
 def _apply_matrix_to_camera(mat_list):
     """Apply matrix with configurable smoothing modes."""
     global LAST_MATRIX, TARGET_MATRIX, LAST_POS, LAST_QUAT, POS_FILTERS
+    
+    # Debug: print incoming translation to verify format
+    # print(f"DEBUG incoming mat: tx={mat_list[3]:.3f} ty={mat_list[7]:.3f} tz={mat_list[11]:.3f} | alt: {mat_list[12]:.3f},{mat_list[13]:.3f},{mat_list[14]:.3f}")
+    
     # Helper to set matrix in Maya (deferred)
     def _set_matrix(final_matrix):
         try:
@@ -380,21 +445,39 @@ def _apply_matrix_to_camera(mat_list):
     cmds.evalDeferred(lambda *_: _set_matrix(final_list))
 
 def _process_packet(data):
+    global LAST_RECEIVE_TIME, RECEIVED_FRAMES, DROPPED_FRAMES
     try:
         payload = json.loads(data.decode('utf8'))
         msg_type = payload.get('type', 'pose')
         if msg_type == 'pose':
             m = payload.get('matrix')
             if not m or len(m) != 16:
-                print('Invalid matrix payload')
+                print('[MagiCAM] Invalid matrix payload')
                 return
+            # Validate numeric content
+            if not _validate_matrix(m):
+                DROPPED_FRAMES += 1
+                return
+            now = time.time()
+            # Rate limit to avoid overload / UI freeze
+            if now - LAST_RECEIVE_TIME < MIN_UPDATE_INTERVAL:
+                DROPPED_FRAMES += 1
+                return
+            LAST_RECEIVE_TIME = now
+            RECEIVED_FRAMES += 1
             _apply_matrix_to_camera(m)
             if LOG_ENABLED:
                 _log(f"pose,{time.time()},{m[:4]}")
+            # occasional stats
+            if RECEIVED_FRAMES % 100 == 0:
+                print(f"[MagiCAM] Received frames: {RECEIVED_FRAMES}, dropped: {DROPPED_FRAMES}")
         elif msg_type == 'calib':
             m = payload.get('matrix')
             if not m or len(m) != 16:
-                print('Invalid calib payload')
+                print('[MagiCAM] Invalid calib payload')
+                return
+            if not _validate_matrix(m):
+                print('[MagiCAM] Invalid calib matrix, ignoring')
                 return
             _calibrate_from_incoming(m)
             if LOG_ENABLED:
@@ -404,25 +487,76 @@ def _process_packet(data):
             if cmd == 'reset_calib':
                 reset_calibration()
             else:
-                print('Unknown cmd:', cmd)
+                print('[MagiCAM] Unknown cmd:', cmd)
         else:
-            print('Unknown message type:', msg_type)
+            print('[MagiCAM] Unknown message type:', msg_type)
     except Exception as e:
-        print('Packet processing error:', e)
+        print('[MagiCAM] Packet processing error:', e)
 
 
 def _server_loop(sock):
     print(f'[MagiCAM] UDP server listening on 0.0.0.0:{PORT}')
+    import select
+    global _LAST_STATS_TIME
     while SERVER_RUNNING:
         try:
-            data, addr = sock.recvfrom(8192)
-            if not data:
+            # Wait briefly for readability
+            r, _, _ = select.select([sock], [], [], 0.05)
+            if not r:
+                # occasional stats print
+                now = time.time()
+                if now - _LAST_STATS_TIME > STATS_INTERVAL:
+                    print(f"[MagiCAM] Stats: received={RECEIVED_FRAMES}, dropped={DROPPED_FRAMES}")
+                    _LAST_STATS_TIME = now
                 continue
-            _process_packet(data)
-        except socket.timeout:
-            continue
+            # Drain up to MAX_BATCH_READ packets; average the batch to reduce jitter
+            batch = 0
+            mats = []
+            while batch < MAX_BATCH_READ:
+                try:
+                    data, addr = sock.recvfrom(8192)
+                    if not data:
+                        break
+                    try:
+                        payload = json.loads(data.decode('utf8'))
+                        m = payload.get('matrix')
+                        if m and len(m) == 16 and _validate_matrix(m):
+                            mats.append(m)
+                    except Exception:
+                        pass
+                    batch += 1
+                except BlockingIOError:
+                    break
+                except socket.timeout:
+                    break
+                except Exception as e:
+                    print('[MagiCAM] Server recv error:', e)
+                    break
+            if mats:
+                # compute batch average: mean translation + averaged quaternion
+                pos_sum = [0.0, 0.0, 0.0]
+                quat_sum = [0.0, 0.0, 0.0, 0.0]
+                for m in mats:
+                    tx, ty, tz = m[3], m[7], m[11]
+                    pos_sum[0] += tx; pos_sum[1] += ty; pos_sum[2] += tz
+                    q = _mat_to_quat(m)
+                    quat_sum[0] += q[0]; quat_sum[1] += q[1]; quat_sum[2] += q[2]; quat_sum[3] += q[3]
+                n = len(mats)
+                avg_pos = [p / n for p in pos_sum]
+                # normalize quaternion sum
+                qlen = math.sqrt(sum([c*c for c in quat_sum]))
+                if qlen == 0:
+                    avg_quat = (1.0, 0.0, 0.0, 0.0)
+                else:
+                    avg_quat = tuple([c / qlen for c in quat_sum])
+                # build matrix from avg_quat and avg_pos
+                rot_mat = _quat_to_mat(avg_quat)
+                avg_mat = list(rot_mat)
+                avg_mat[3], avg_mat[7], avg_mat[11] = avg_pos
+                _process_packet(json.dumps({'type':'pose','matrix':avg_mat,'t':time.time()}).encode('utf8'))
         except Exception as e:
-            print('Server loop error:', e)
+            # if socket was closed from another thread, break cleanly
+            print('[MagiCAM] Server loop error:', e)
             break
     print('[MagiCAM] Server stopped')
 
@@ -441,9 +575,27 @@ def start_server(port=9000, camera='camera1', alpha=0.6, use_osc=False, log_path
     ALPHA = alpha
     SERVER_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     SERVER_SOCKET.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # increase receive buffer to handle bursts
+    try:
+        SERVER_SOCKET.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 256 * 1024)
+    except Exception:
+        pass
     SERVER_SOCKET.bind(('0.0.0.0', PORT))
-    SERVER_SOCKET.settimeout(0.5)
+    # use non-blocking socket + select-based loop
+    SERVER_SOCKET.setblocking(False)
     SERVER_RUNNING = True
+
+    # Initialize LAST_MATRIX from the current Maya camera transform to avoid an initial jump
+    try:
+        if cmds.objExists(CAMERA_NAME):
+            global LAST_MATRIX
+            LAST_MATRIX = cmds.xform(CAMERA_NAME, q=True, ws=True, matrix=True)
+    except Exception:
+        pass
+
+    # If interpolation mode is enabled, ensure the interpolation thread is started
+    if SMOOTH_MODE == 'matrix_interp':
+        _start_interp_thread()
 
     if log_path:
         LOG_FILE = log_path
@@ -517,8 +669,9 @@ def stop_server():
     if not SERVER_RUNNING:
         return
     SERVER_RUNNING = False
+    print('Server stopping...')
+    # send empty packet to wake the select/recv loop
     try:
-        # send empty packet to wake recvfrom
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.sendto(b'', ('127.0.0.1', PORT))
         s.close()
@@ -534,12 +687,21 @@ def stop_server():
     except Exception:
         pass
 
-    if SERVER_SOCKET:
-        SERVER_SOCKET.close()
+    # close server socket safely
+    try:
+        if SERVER_SOCKET:
+            try:
+                SERVER_SOCKET.close()
+            except Exception as e:
+                print('[MagiCAM] Error closing server socket:', e)
+            finally:
+                SERVER_SOCKET = None
+    except Exception:
+        pass
+
     # disable logging
     LOG_ENABLED = False
     LOG_FILE = None
-    print('Server stopping...')
 
 
 def calibrate():
@@ -635,7 +797,7 @@ def show_ui():
     prefs = load_prefs()
     if cmds.window(_UI_WINDOW_NAME, exists=True):
         cmds.deleteUI(_UI_WINDOW_NAME)
-    win = cmds.window(_UI_WINDOW_NAME, title='MagiCAM Receiver', widthHeight=(420,300))
+    win = cmds.window(_UI_WINDOW_NAME, title='MagiCAM Receiver', widthHeight=(480,360))
     cmds.columnLayout(adjustableColumn=True)
 
     cmds.text(label='Server settings')
@@ -658,6 +820,13 @@ def show_ui():
         pass
     _UI_ELEMENTS['alphaField'] = cmds.floatSliderGrp(field=True, label='Alpha', value=prefs.get('smooth_alpha', SMOOTH_ALPHA), minValue=0.0, maxValue=1.0)
     _UI_ELEMENTS['fpsField'] = cmds.intFieldGrp(numberOfFields=1, label='Target FPS', value1=prefs.get('target_fps', TARGET_FPS))
+
+    cmds.separator(height=10)
+    cmds.text(label='Advanced')
+    _UI_ELEMENTS['posAlpha'] = cmds.floatFieldGrp(numberOfFields=1, label='Pos Alpha', value1=prefs.get('pos_alpha', POS_ALPHA))
+    _UI_ELEMENTS['rotAlpha'] = cmds.floatFieldGrp(numberOfFields=1, label='Rot Alpha', value1=prefs.get('rot_alpha', ROT_ALPHA))
+    _UI_ELEMENTS['minInterval'] = cmds.floatFieldGrp(numberOfFields=1, label='Min Interval (s)', value1=prefs.get('min_interval', MIN_UPDATE_INTERVAL))
+    _UI_ELEMENTS['maxBatch'] = cmds.intFieldGrp(numberOfFields=1, label='Max Batch Read', value1=prefs.get('max_batch', MAX_BATCH_READ))
 
     cmds.separator(height=10)
     cmds.rowLayout(numberOfColumns=5)
@@ -692,11 +861,20 @@ def _ui_start():
     fps = cmds.intFieldGrp(_UI_ELEMENTS['fpsField'], q=True, value1=True)
     use_osc = cmds.checkBox(_UI_ELEMENTS['oscCheck'], q=True, value=True)
 
-    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME
+    pos_alpha = cmds.floatFieldGrp(_UI_ELEMENTS['posAlpha'], q=True, value1=True)
+    rot_alpha = cmds.floatFieldGrp(_UI_ELEMENTS['rotAlpha'], q=True, value1=True)
+    min_interval = cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], q=True, value1=True)
+    max_batch = cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], q=True, value1=True)
+
+    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ
     SMOOTH_MODE = mode
     SMOOTH_ALPHA = alpha
     TARGET_FPS = fps
     CAMERA_NAME = cam
+    POS_ALPHA = pos_alpha
+    ROT_ALPHA = rot_alpha
+    MIN_UPDATE_INTERVAL = max(1e-4, min_interval)
+    MAX_BATCH_READ = max(1, max_batch)
 
     # reset filters if using predictive mode
     if SMOOTH_MODE in ('alpha_beta', 'kalman'):
@@ -708,7 +886,7 @@ def _ui_start():
 
     start_server(port=port, camera=cam, alpha=alpha, use_osc=use_osc)
     # save prefs
-    prefs = {'port': port, 'camera': cam, 'use_osc': use_osc, 'smooth_mode': SMOOTH_MODE, 'smooth_alpha': SMOOTH_ALPHA, 'target_fps': TARGET_FPS}
+    prefs = {'port': port, 'camera': cam, 'use_osc': use_osc, 'smooth_mode': SMOOTH_MODE, 'smooth_alpha': SMOOTH_ALPHA, 'target_fps': TARGET_FPS, 'pos_alpha': POS_ALPHA, 'rot_alpha': ROT_ALPHA, 'min_interval': MIN_UPDATE_INTERVAL, 'max_batch': MAX_BATCH_READ}
     save_prefs(prefs)
     try:
         cmds.text(_UI_ELEMENTS['statusText'], e=True, label='Status: running')
