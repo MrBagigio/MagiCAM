@@ -1,5 +1,12 @@
 import SwiftUI
 
+// Custom colors compatible with iOS 14
+extension Color {
+    static let cyanCompat = Color(red: 0.0, green: 0.8, blue: 0.95)
+    static let darkBg1 = Color(red: 0.05, green: 0.05, blue: 0.15)
+    static let darkBg2 = Color(red: 0.1, green: 0.1, blue: 0.25)
+}
+
 struct ContentView: View {
     @StateObject var manager = ARSessionManager()
     @State var host: String = "192.168.1.100"
@@ -13,16 +20,13 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            // Background gradient
+            // Background gradient (iOS 14 compatible)
             LinearGradient(
-                gradient: Gradient(colors: [
-                    Color(red: 0.05, green: 0.05, blue: 0.15),
-                    Color(red: 0.1, green: 0.1, blue: 0.25)
-                ]),
+                gradient: Gradient(colors: [Color.darkBg1, Color.darkBg2]),
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .ignoresSafeArea()
+            .edgesIgnoringSafeArea(.all)
             
             VStack(spacing: 0) {
                 // Header
@@ -68,17 +72,11 @@ struct ContentView: View {
             HStack {
                 Image(systemName: "camera.viewfinder")
                     .font(.system(size: 32, weight: .light))
-                    .foregroundColor(.cyan)
+                    .foregroundColor(Color.cyanCompat)
                 
                 Text("MagiCAM")
                     .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.cyan, .blue, .purple],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .foregroundColor(Color.cyanCompat)
             }
             
             Text("ARKit Camera Tracking")
@@ -106,19 +104,23 @@ struct ContentView: View {
                     Circle()
                         .trim(from: 0, to: 0.7)
                         .stroke(
-                            LinearGradient(colors: [.green, .cyan], startPoint: .leading, endPoint: .trailing),
+                            LinearGradient(
+                                gradient: Gradient(colors: [.green, Color.cyanCompat]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
                             style: StrokeStyle(lineWidth: 4, lineCap: .round)
                         )
                         .frame(width: 120, height: 120)
                         .rotationEffect(.degrees(Double(frameCount) * 10))
-                        .animation(.linear(duration: 0.5), value: frameCount)
+                        .animation(.linear(duration: 0.5))
                 }
                 
                 // Inner circle
                 Circle()
                     .fill(
                         RadialGradient(
-                            colors: isRunning ? [.green.opacity(0.3), .clear] : [.gray.opacity(0.1), .clear],
+                            gradient: Gradient(colors: isRunning ? [Color.green.opacity(0.3), Color.clear] : [Color.gray.opacity(0.1), Color.clear]),
                             center: .center,
                             startRadius: 0,
                             endRadius: 50
@@ -145,11 +147,10 @@ struct ContentView: View {
             // Host field
             HStack {
                 Image(systemName: "network")
-                    .foregroundColor(.cyan)
+                    .foregroundColor(Color.cyanCompat)
                     .frame(width: 30)
                 
                 TextField("Host IP", text: $host)
-                    .textFieldStyle(.plain)
                     .keyboardType(.numbersAndPunctuation)
                     .autocapitalization(.none)
                     .foregroundColor(.white)
@@ -160,7 +161,7 @@ struct ContentView: View {
                     .fill(Color.white.opacity(0.08))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
+                            .stroke(Color.cyanCompat.opacity(0.3), lineWidth: 1)
                     )
             )
             
@@ -171,7 +172,6 @@ struct ContentView: View {
                     .frame(width: 30)
                 
                 TextField("Port", text: $port)
-                    .textFieldStyle(.plain)
                     .keyboardType(.numberPad)
                     .foregroundColor(.white)
             }
@@ -217,15 +217,14 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: 16)
                         .fill(
                             LinearGradient(
-                                colors: isRunning ? [.red, .orange] : [.green, .cyan],
+                                gradient: Gradient(colors: isRunning ? [.red, .orange] : [.green, Color.cyanCompat]),
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
                         )
-                        .shadow(color: isRunning ? .red.opacity(0.4) : .green.opacity(0.4), radius: 10, y: 5)
+                        .shadow(color: isRunning ? Color.red.opacity(0.4) : Color.green.opacity(0.4), radius: 10, y: 5)
                 )
             }
-            .scaleEffect(isRunning ? 1.0 : 1.0)
             
             // Calibrate button
             Button(action: {
@@ -247,12 +246,12 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: 16)
                         .fill(
                             LinearGradient(
-                                colors: [.blue, .purple],
+                                gradient: Gradient(colors: [.blue, .purple]),
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
                         )
-                        .shadow(color: .purple.opacity(0.3), radius: 10, y: 5)
+                        .shadow(color: Color.purple.opacity(0.3), radius: 10, y: 5)
                 )
             }
             .disabled(!isRunning)
@@ -263,7 +262,7 @@ struct ContentView: View {
     // MARK: - Stats View
     var statsView: some View {
         HStack(spacing: 30) {
-            StatBox(icon: "arrow.up.arrow.down", label: "RATE", value: "60 Hz", color: .cyan)
+            StatBox(icon: "arrow.up.arrow.down", label: "RATE", value: "60 Hz", color: Color.cyanCompat)
             StatBox(icon: "cube.transparent", label: "SCALE", value: "×100", color: .purple)
             StatBox(icon: "checkmark.circle", label: "STATUS", value: "OK", color: .green)
         }
