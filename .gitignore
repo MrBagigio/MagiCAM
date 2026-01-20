@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# macOS
+.DS_Store
+
+# Xcode
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# IDEs
+.vscode/
+.idea/
+
+# Python virtual env
+venv/
+ENV/
+
+# Archives
+*.zip
+*.ipa
+
+# Logs
+*.log
+
+# Temporary
+*.tmp

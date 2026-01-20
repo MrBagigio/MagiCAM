@@ -1,0 +1,44 @@
+name: Build unsigned iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: List workspace
+        run: ls -la
+
+      - name: Build iOS app (.app) without code signing
+        # Assumes an Xcode project named MagiCAM.xcodeproj with scheme MagiCAM
+        run: |
+          set -e
+          # Clean and build the Release configuration for iphoneos
+          xcodebuild -project MagiCAM.xcodeproj -scheme MagiCAM -configuration Release -sdk iphoneos SYMROOT=build CODE_SIGNING_ALLOWED=NO clean build
+
+      - name: Package unsigned .ipa
+        run: |
+          set -e
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/MagiCAM.app Payload/
+          zip -r MagiCAM.ipa Payload
+          ls -la MagiCAM.ipa
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MagiCAM-unsigned-ipa
+          path: MagiCAM.ipa
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: build
