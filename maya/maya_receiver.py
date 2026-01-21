@@ -280,47 +280,41 @@ def _validate_matrix(m):
 def _arkit_to_maya_matrix(mat_list):
     """Convert ARKit row-major matrix to Maya coordinate system.
     
-    ARKit gives us the phone's pose in world coordinates.
-    We need to convert this to Maya's coordinate system.
+    Both ARKit and Maya use right-handed Y-up systems where camera looks at -Z.
+    The key difference is the world Z axis direction.
     
-    After testing: if ALL movements are inverted, we need to invert the matrix.
-    This is done by transposing the rotation and negating the translation
-    as seen from the inverted rotation.
+    ARKit: When you move the phone forward (away from you), you move in -Z world direction.
+    Maya: We want the camera to move in the same direction you move the phone.
     
-    FLIP_YAW=True: applies Z axis inversion (forward/back, yaw)
-    FLIP_PITCH=True: applies X axis inversion (left/right, pitch)
+    Solution: We need to negate certain axes to match the expected behavior.
+    
+    Testing shows all movements are inverted, meaning we need to:
+    - Negate translation (tx, ty, tz) to invert position
+    - Negate rotation by transposing rotation part (or negating appropriate axes)
+    
+    FLIP_YAW (Z axis): controls forward/back movement and left/right rotation
+    FLIP_PITCH (X axis): controls left/right movement and up/down tilt
     """
     try:
-        mm_in = _rowlist_to_mmatrix(mat_list)
+        # Extract the matrix components
+        # Row-major: [m00,m01,m02,tx, m10,m11,m12,ty, m20,m21,m22,tz, 0,0,0,1]
+        m = list(mat_list)
         
-        # If both flips are on (default), we apply full inversion
-        # This means: negate X and Z, keep Y
         if FLIP_YAW and FLIP_PITCH:
-            # Full inversion for X and Z axes
-            # This effectively mirrors the transform
-            R = om.MMatrix([-1.0, 0.0, 0.0, 0.0,
-                            0.0, 1.0, 0.0, 0.0,
-                            0.0, 0.0, -1.0, 0.0,
-                            0.0, 0.0, 0.0, 1.0])
+            # Both on: negate X and Z components
+            # This handles: forward/back, left/right, and all rotations
+            # Negate X column (indices 0,4,8) and X translation (3)
+            m[0] = -m[0]; m[4] = -m[4]; m[8] = -m[8]; m[3] = -m[3]
+            # Negate Z column (indices 2,6,10) and Z translation (11)
+            m[2] = -m[2]; m[6] = -m[6]; m[10] = -m[10]; m[11] = -m[11]
         elif FLIP_YAW:
-            # Only Z flip
-            R = om.MMatrix([1.0, 0.0, 0.0, 0.0,
-                            0.0, 1.0, 0.0, 0.0,
-                            0.0, 0.0, -1.0, 0.0,
-                            0.0, 0.0, 0.0, 1.0])
+            # Only Z flip: negate Z components
+            m[2] = -m[2]; m[6] = -m[6]; m[10] = -m[10]; m[11] = -m[11]
         elif FLIP_PITCH:
-            # Only X flip
-            R = om.MMatrix([-1.0, 0.0, 0.0, 0.0,
-                            0.0, 1.0, 0.0, 0.0,
-                            0.0, 0.0, 1.0, 0.0,
-                            0.0, 0.0, 0.0, 1.0])
-        else:
-            # No flip - pass through
-            return mat_list
+            # Only X flip: negate X components
+            m[0] = -m[0]; m[4] = -m[4]; m[8] = -m[8]; m[3] = -m[3]
         
-        # Apply reflection: R * M * R
-        mm_out = R * mm_in * R
-        return list(mm_out)
+        return m
     except Exception as e:
         print('Matrix conversion error:', e)
         return mat_list

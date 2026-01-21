@@ -141,33 +141,43 @@ struct ContentView: View {
         }
     }
     
-    // MARK: - Viewport Overlay
+    // MARK: - Viewport Overlay (FULLSCREEN)
     func viewportOverlay(image: UIImage, geometry: GeometryProxy) -> some View {
         ZStack {
-            // Semi-transparent background
-            Color.black.opacity(0.9)
+            // Full black background
+            Color.black
                 .edgesIgnoringSafeArea(.all)
             
-            VStack(spacing: 12) {
-                // Title bar
+            // Fullscreen viewport image
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipped()
+                .edgesIgnoringSafeArea(.all)
+            
+            // Overlay controls (top bar)
+            VStack {
                 HStack {
-                    Text("Maya Viewport")
-                        .font(.system(size: isLandscape ? 14 : 18, weight: .bold))
-                        .foregroundColor(.white)
-                    
-                    Spacer()
-                    
+                    // FPS indicator
                     if streamReceiver.isConnected {
                         HStack(spacing: 4) {
                             Circle()
                                 .fill(Color.green)
                                 .frame(width: 8, height: 8)
                             Text("\(streamReceiver.fps) FPS")
-                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
                                 .foregroundColor(.green)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(8)
                     }
                     
+                    Spacer()
+                    
+                    // Close button
                     Button(action: {
                         withAnimation(.spring()) {
                             showViewport = false
@@ -175,21 +185,25 @@ struct ContentView: View {
                         }
                     }) {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: isLandscape ? 24 : 28))
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(.system(size: 32))
+                            .foregroundColor(.white.opacity(0.8))
+                            .shadow(color: .black.opacity(0.5), radius: 4)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, isLandscape ? 8 : 50)
+                .padding(.horizontal, 20)
+                .padding(.top, isLandscape ? 10 : 50)
                 
-                // Viewport image - fills available space
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .cornerRadius(12)
-                    .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
-                    .padding(.horizontal, isLandscape ? 8 : 20)
-                    .padding(.bottom, isLandscape ? 8 : 20)
+                Spacer()
+                
+                // Bottom hint
+                Text("Maya Camera View")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.6))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.4))
+                    .cornerRadius(8)
+                    .padding(.bottom, isLandscape ? 10 : 30)
             }
         }
         .transition(.opacity)
