@@ -185,9 +185,12 @@ _UI_ELEMENTS = {}
 # Preferences
 _PREFS_PATH = os.path.join(os.path.expanduser('~'), '.magicam_prefs.json')
 
-# Coordinate flip options (control yaw/pitch inversion)
-FLIP_YAW = True   # inverts Z axis reflection to match ARKit->Maya yaw direction
-FLIP_PITCH = True # inverts Y axis reflection to match ARKit->Maya pitch direction
+# Coordinate flip options (control axis inversion for ARKit->Maya)
+# With both TRUE: forward/back and left/right should match phone movement
+# FLIP_YAW: controls Z axis - affects forward/backward movement and left/right rotation
+# FLIP_PITCH: controls X axis - affects left/right movement and up/down tilt
+FLIP_YAW = True    # Flip Z: forward/back movement + yaw rotation
+FLIP_PITCH = True  # Flip X: left/right movement + pitch rotation
 
 
 def save_prefs(prefs):
@@ -276,22 +279,46 @@ def _validate_matrix(m):
 
 def _arkit_to_maya_matrix(mat_list):
     """Convert ARKit row-major matrix to Maya coordinate system.
-    ARKit: Right-handed, Y-up, -Z forward
-    Maya: Right-handed, Y-up, Z forward
-
-    Applies optional axis reflections based on FLIP_YAW and FLIP_PITCH flags.
-    Reflection matrix R = diag(1, r11, r22, 1) where r11 = -1 if FLIP_PITCH else 1
-    and r22 = -1 if FLIP_YAW else 1. The output is R * M * R.
+    
+    ARKit gives us the phone's pose in world coordinates.
+    We need to convert this to Maya's coordinate system.
+    
+    After testing: if ALL movements are inverted, we need to invert the matrix.
+    This is done by transposing the rotation and negating the translation
+    as seen from the inverted rotation.
+    
+    FLIP_YAW=True: applies Z axis inversion (forward/back, yaw)
+    FLIP_PITCH=True: applies X axis inversion (left/right, pitch)
     """
     try:
         mm_in = _rowlist_to_mmatrix(mat_list)
-        r00 = 1.0
-        r11 = -1.0 if FLIP_PITCH else 1.0
-        r22 = -1.0 if FLIP_YAW else 1.0
-        R = om.MMatrix([r00, 0.0, 0.0, 0.0,
-                        0.0, r11, 0.0, 0.0,
-                        0.0, 0.0, r22, 0.0,
-                        0.0, 0.0, 0.0, 1.0])
+        
+        # If both flips are on (default), we apply full inversion
+        # This means: negate X and Z, keep Y
+        if FLIP_YAW and FLIP_PITCH:
+            # Full inversion for X and Z axes
+            # This effectively mirrors the transform
+            R = om.MMatrix([-1.0, 0.0, 0.0, 0.0,
+                            0.0, 1.0, 0.0, 0.0,
+                            0.0, 0.0, -1.0, 0.0,
+                            0.0, 0.0, 0.0, 1.0])
+        elif FLIP_YAW:
+            # Only Z flip
+            R = om.MMatrix([1.0, 0.0, 0.0, 0.0,
+                            0.0, 1.0, 0.0, 0.0,
+                            0.0, 0.0, -1.0, 0.0,
+                            0.0, 0.0, 0.0, 1.0])
+        elif FLIP_PITCH:
+            # Only X flip
+            R = om.MMatrix([-1.0, 0.0, 0.0, 0.0,
+                            0.0, 1.0, 0.0, 0.0,
+                            0.0, 0.0, 1.0, 0.0,
+                            0.0, 0.0, 0.0, 1.0])
+        else:
+            # No flip - pass through
+            return mat_list
+        
+        # Apply reflection: R * M * R
         mm_out = R * mm_in * R
         return list(mm_out)
     except Exception as e:
@@ -985,8 +1012,8 @@ def show_ui():
     cmds.separator(height=10)
     cmds.text(label='Coordinate Flips (ARKit→Maya)')
     cmds.rowLayout(numberOfColumns=2)
-    _UI_ELEMENTS['flipYaw'] = cmds.checkBox(label='Flip Yaw (left/right)', value=FLIP_YAW, changeCommand=lambda v: set_flip_yaw(v))
-    _UI_ELEMENTS['flipPitch'] = cmds.checkBox(label='Flip Pitch (up/down)', value=FLIP_PITCH, changeCommand=lambda v: set_flip_pitch(v))
+    _UI_ELEMENTS['flipYaw'] = cmds.checkBox(label='Flip Z (forward/back + yaw)', value=FLIP_YAW, changeCommand=lambda v: set_flip_yaw(v))
+    _UI_ELEMENTS['flipPitch'] = cmds.checkBox(label='Flip X (left/right + pitch)', value=FLIP_PITCH, changeCommand=lambda v: set_flip_pitch(v))
     cmds.setParent('..')
 
     cmds.separator(height=10)

@@ -84,4 +84,3 @@ clear_magicam_cache()
 
 # Open the UI (use the reloaded module)
 maya_receiver.show_ui()   # apre la finestra: premi "Start"
-
