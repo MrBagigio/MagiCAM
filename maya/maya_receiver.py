@@ -281,56 +281,20 @@ def _arkit_to_maya_matrix(mat_list):
     """Convert ARKit matrix to Maya coordinate system.
     
     Matrix format (row-major, as sent from iOS):
-    [Xx, Yx, Zx, Tx,    <- Row 0 (indices 0-3)
-     Xy, Yy, Zy, Ty,    <- Row 1 (indices 4-7)
-     Xz, Yz, Zz, Tz,    <- Row 2 (indices 8-11)
-     0,  0,  0,  1]     <- Row 3 (indices 12-15)
+    [m00, m01, m02, tx,    <- Row 0 (indices 0-3)
+     m10, m11, m12, ty,    <- Row 1 (indices 4-7)
+     m20, m21, m22, tz,    <- Row 2 (indices 8-11)
+     0,   0,   0,   1]     <- Row 3 (indices 12-15)
     
-    Where X/Y/Z are the axis vectors and T is translation.
+    ARKit and Maya both use right-handed coordinate systems.
+    The FLIP options allow inverting specific axes to match user preference.
     
-    ARKit: +X right, +Y up, -Z forward (camera looks at -Z)
-    Maya:  +X right, +Y up, -Z forward (camera looks at -Z) - SAME!
-    
-    The systems are the same! The issue is that when you move the phone
-    "forward" in the real world, you want the Maya camera to move in 
-    the corresponding direction. This depends on calibration and user preference.
-    
-    FLIP_YAW: When True, inverts Z axis (forward/back movement, left/right rotation)
-    FLIP_PITCH: When True, inverts X axis (left/right movement, up/down tilt)
+    Returns the matrix unchanged - let the user calibrate to their preference.
+    The calibration system handles the coordinate matching.
     """
-    try:
-        m = list(mat_list)
-        
-        if FLIP_YAW:
-            # Invert Z: negate Z column of rotation and Z translation
-            # Z column: indices 2, 6, 10
-            # Z translation: index 11
-            # Also negate Z row: indices 8, 9 (10 already done)
-            m[2] = -m[2]
-            m[6] = -m[6]
-            m[8] = -m[8]
-            m[9] = -m[9]
-            m[10] = -m[10]
-            m[11] = -m[11]
-            
-        if FLIP_PITCH:
-            # Invert X: negate X column of rotation and X translation
-            # X column: indices 0, 4, 8
-            # X translation: index 3
-            # Note: index 8 might already be negated by FLIP_YAW, handle that
-            if FLIP_YAW:
-                # m[8] was already negated, negate again = back to original
-                m[8] = -m[8]
-            else:
-                m[8] = -m[8]
-            m[0] = -m[0]
-            m[4] = -m[4]
-            m[3] = -m[3]
-        
-        return m
-    except Exception as e:
-        print('Matrix conversion error:', e)
-        return mat_list
+    # Simply return the matrix as-is - the calibration handles coordinate matching
+    # This avoids corrupting the rotation matrix with partial negations
+    return list(mat_list)
 
 
 def _start_interp_thread():
