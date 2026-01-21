@@ -82,9 +82,16 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         lastSend = now
 
         // Build row-major 4x4 matrix for Maya
-        // ARKit simd_float4x4 is column-major, we need row-major
-        // Row-major format: [r0c0,r0c1,r0c2,r0c3, r1c0,r1c1,r1c2,r1c3, ...]
-        // Translation goes in positions [3, 7, 11] (last element of each row except last row)
+        // ARKit simd_float4x4 is COLUMN-major: columns.0 is the first column (X-axis vector)
+        // Maya expects ROW-major: [row0, row1, row2, row3] where each row is [x,y,z,w]
+        // 
+        // Column-major (ARKit):        Row-major (Maya):
+        // | c0.x c1.x c2.x c3.x |      | m[0]  m[1]  m[2]  m[3]  |   <- row 0
+        // | c0.y c1.y c2.y c3.y |  =>  | m[4]  m[5]  m[6]  m[7]  |   <- row 1
+        // | c0.z c1.z c2.z c3.z |      | m[8]  m[9]  m[10] m[11] |   <- row 2
+        // | c0.w c1.w c2.w c3.w |      | m[12] m[13] m[14] m[15] |   <- row 3
+        //
+        // So row-major[i] = reading left-to-right, top-to-bottom from the column-major matrix
         let c0 = mat.columns.0
         let c1 = mat.columns.1
         let c2 = mat.columns.2
@@ -95,15 +102,16 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         let ty = c3.y * translationScale
         let tz = c3.z * translationScale
         
-        // Row-major: each row is [Xx, Xy, Xz, Tx] etc
-        // But Maya expects: [r0c0, r0c1, r0c2, r0c3, r1c0, ...]
-        // Which for a standard transform is:
-        // [Xx, Yx, Zx, Tx,  Xy, Yy, Zy, Ty,  Xz, Yz, Zz, Tz,  0, 0, 0, 1]
+        // Row-major: flatten the matrix reading row by row
+        // Row 0: first row of the matrix = [c0.x, c1.x, c2.x, tx]
+        // Row 1: second row = [c0.y, c1.y, c2.y, ty]
+        // Row 2: third row = [c0.z, c1.z, c2.z, tz]
+        // Row 3: [0, 0, 0, 1]
         let arr: [Float] = [
-            c0.x, c1.x, c2.x, tx,   // Row 0: X-axis + tx
-            c0.y, c1.y, c2.y, ty,   // Row 1: Y-axis + ty  
-            c0.z, c1.z, c2.z, tz,   // Row 2: Z-axis + tz
-            0.0,  0.0,  0.0,  1.0   // Row 3: homogeneous
+            c0.x, c1.x, c2.x, tx,   // Row 0
+            c0.y, c1.y, c2.y, ty,   // Row 1
+            c0.z, c1.z, c2.z, tz,   // Row 2
+            0.0,  0.0,  0.0,  1.0   // Row 3
         ]
         
         let payload: [String: Any] = ["type":"pose", "matrix": arr, "t": now]

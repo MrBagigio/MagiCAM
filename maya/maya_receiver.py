@@ -278,41 +278,54 @@ def _validate_matrix(m):
 
 
 def _arkit_to_maya_matrix(mat_list):
-    """Convert ARKit row-major matrix to Maya coordinate system.
+    """Convert ARKit matrix to Maya coordinate system.
     
-    Both ARKit and Maya use right-handed Y-up systems where camera looks at -Z.
-    The key difference is the world Z axis direction.
+    Matrix format (row-major, as sent from iOS):
+    [Xx, Yx, Zx, Tx,    <- Row 0 (indices 0-3)
+     Xy, Yy, Zy, Ty,    <- Row 1 (indices 4-7)
+     Xz, Yz, Zz, Tz,    <- Row 2 (indices 8-11)
+     0,  0,  0,  1]     <- Row 3 (indices 12-15)
     
-    ARKit: When you move the phone forward (away from you), you move in -Z world direction.
-    Maya: We want the camera to move in the same direction you move the phone.
+    Where X/Y/Z are the axis vectors and T is translation.
     
-    Solution: We need to negate certain axes to match the expected behavior.
+    ARKit: +X right, +Y up, -Z forward (camera looks at -Z)
+    Maya:  +X right, +Y up, -Z forward (camera looks at -Z) - SAME!
     
-    Testing shows all movements are inverted, meaning we need to:
-    - Negate translation (tx, ty, tz) to invert position
-    - Negate rotation by transposing rotation part (or negating appropriate axes)
+    The systems are the same! The issue is that when you move the phone
+    "forward" in the real world, you want the Maya camera to move in 
+    the corresponding direction. This depends on calibration and user preference.
     
-    FLIP_YAW (Z axis): controls forward/back movement and left/right rotation
-    FLIP_PITCH (X axis): controls left/right movement and up/down tilt
+    FLIP_YAW: When True, inverts Z axis (forward/back movement, left/right rotation)
+    FLIP_PITCH: When True, inverts X axis (left/right movement, up/down tilt)
     """
     try:
-        # Extract the matrix components
-        # Row-major: [m00,m01,m02,tx, m10,m11,m12,ty, m20,m21,m22,tz, 0,0,0,1]
         m = list(mat_list)
         
-        if FLIP_YAW and FLIP_PITCH:
-            # Both on: negate X and Z components
-            # This handles: forward/back, left/right, and all rotations
-            # Negate X column (indices 0,4,8) and X translation (3)
-            m[0] = -m[0]; m[4] = -m[4]; m[8] = -m[8]; m[3] = -m[3]
-            # Negate Z column (indices 2,6,10) and Z translation (11)
-            m[2] = -m[2]; m[6] = -m[6]; m[10] = -m[10]; m[11] = -m[11]
-        elif FLIP_YAW:
-            # Only Z flip: negate Z components
-            m[2] = -m[2]; m[6] = -m[6]; m[10] = -m[10]; m[11] = -m[11]
-        elif FLIP_PITCH:
-            # Only X flip: negate X components
-            m[0] = -m[0]; m[4] = -m[4]; m[8] = -m[8]; m[3] = -m[3]
+        if FLIP_YAW:
+            # Invert Z: negate Z column of rotation and Z translation
+            # Z column: indices 2, 6, 10
+            # Z translation: index 11
+            # Also negate Z row: indices 8, 9 (10 already done)
+            m[2] = -m[2]
+            m[6] = -m[6]
+            m[8] = -m[8]
+            m[9] = -m[9]
+            m[10] = -m[10]
+            m[11] = -m[11]
+            
+        if FLIP_PITCH:
+            # Invert X: negate X column of rotation and X translation
+            # X column: indices 0, 4, 8
+            # X translation: index 3
+            # Note: index 8 might already be negated by FLIP_YAW, handle that
+            if FLIP_YAW:
+                # m[8] was already negated, negate again = back to original
+                m[8] = -m[8]
+            else:
+                m[8] = -m[8]
+            m[0] = -m[0]
+            m[4] = -m[4]
+            m[3] = -m[3]
         
         return m
     except Exception as e:
