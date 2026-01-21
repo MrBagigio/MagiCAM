@@ -1464,7 +1464,10 @@ _PENDING_STREAM_FRAME = None
 
 
 def _do_stream_capture_sync():
-    """Capture viewport frame synchronously (must be called from Maya main thread)."""
+    """Capture viewport frame synchronously (must be called from Maya main thread).
+    
+    Uses the CAMERA_NAME that is being controlled by MagiCAM.
+    """
     global _PENDING_STREAM_FRAME
     try:
         temp_dir = _get_stream_temp_dir()
@@ -1473,6 +1476,17 @@ def _do_stream_capture_sync():
         # Remove old file if exists
         if os.path.exists(temp_file):
             os.remove(temp_file)
+        
+        # Get the current model panel and temporarily switch to our camera
+        # Find a model panel to use for playblast
+        model_panels = cmds.getPanel(type='modelPanel') or []
+        if model_panels:
+            panel = model_panels[0]
+            # Save current camera
+            old_camera = cmds.modelPanel(panel, q=True, camera=True)
+            # Switch to our controlled camera
+            if cmds.objExists(CAMERA_NAME):
+                cmds.modelPanel(panel, e=True, camera=CAMERA_NAME)
         
         # Capture using playblast with PNG format (more reliable)
         cmds.playblast(
@@ -1489,6 +1503,13 @@ def _do_stream_capture_sync():
             widthHeight=(STREAM_WIDTH, STREAM_HEIGHT),
             offScreen=True
         )
+        
+        # Restore original camera
+        if model_panels and old_camera:
+            try:
+                cmds.modelPanel(panel, e=True, camera=old_camera)
+            except Exception:
+                pass
         
         # Read the file
         if os.path.exists(temp_file):

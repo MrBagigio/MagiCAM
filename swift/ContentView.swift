@@ -40,16 +40,19 @@ struct ContentView: View {
                 )
                 .edgesIgnoringSafeArea(.all)
                 
-                // Viewport stream overlay (when active)
-                if showViewport, let frame = streamReceiver.currentFrame {
-                    viewportOverlay(image: frame, geometry: geometry)
+                // Main content - adapts to orientation (hidden when viewport is active)
+                if !showViewport || streamReceiver.currentFrame == nil {
+                    if isLandscape {
+                        landscapeLayout(geometry: geometry)
+                    } else {
+                        portraitLayout(geometry: geometry)
+                    }
                 }
                 
-                // Main content - adapts to orientation
-                if isLandscape {
-                    landscapeLayout(geometry: geometry)
-                } else {
-                    portraitLayout(geometry: geometry)
+                // Viewport stream overlay (when active) - MUST BE ON TOP
+                if showViewport, let frame = streamReceiver.currentFrame {
+                    viewportOverlay(image: frame, geometry: geometry)
+                        .zIndex(100) // Ensure it's on top
                 }
             }
         }
