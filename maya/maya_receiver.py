@@ -278,7 +278,7 @@ def _validate_matrix(m):
 
 
 def _arkit_to_maya_matrix(mat_list):
-    """Convert ARKit matrix to Maya coordinate system.
+    """Convert ARKit matrix to Maya coordinate system with optional axis flips.
     
     Matrix format (row-major, as sent from iOS):
     [m00, m01, m02, tx,    <- Row 0 (indices 0-3)
@@ -286,15 +286,38 @@ def _arkit_to_maya_matrix(mat_list):
      m20, m21, m22, tz,    <- Row 2 (indices 8-11)
      0,   0,   0,   1]     <- Row 3 (indices 12-15)
     
-    ARKit and Maya both use right-handed coordinate systems.
-    The FLIP options allow inverting specific axes to match user preference.
+    FLIP_YAW: When True, reflects across XY plane (negates Z axis)
+    FLIP_PITCH: When True, reflects across YZ plane (negates X axis)
     
-    Returns the matrix unchanged - let the user calibrate to their preference.
-    The calibration system handles the coordinate matching.
+    Uses proper reflection matrices to preserve orthogonality.
     """
-    # Simply return the matrix as-is - the calibration handles coordinate matching
-    # This avoids corrupting the rotation matrix with partial negations
-    return list(mat_list)
+    try:
+        # Start with input matrix
+        mm = _rowlist_to_mmatrix(mat_list)
+        
+        # Apply reflection matrices if needed
+        if FLIP_YAW:
+            # Reflect across XY plane: negate Z
+            # Reflection matrix: diag(1, 1, -1, 1)
+            reflect_z = [1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, -1, 0,
+                        0, 0, 0, 1]
+            mm = _rowlist_to_mmatrix(reflect_z) * mm
+        
+        if FLIP_PITCH:
+            # Reflect across YZ plane: negate X
+            # Reflection matrix: diag(-1, 1, 1, 1)
+            reflect_x = [-1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, 0,
+                        0, 0, 0, 1]
+            mm = _rowlist_to_mmatrix(reflect_x) * mm
+        
+        return list(mm)
+    except Exception as e:
+        print('Matrix conversion error:', e)
+        return list(mat_list)
 
 
 def _start_interp_thread():
@@ -1041,10 +1064,24 @@ def _ui_start():
     max_batch = cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], q=True, value1=True)
     verbose = cmds.checkBox(_UI_ELEMENTS['verboseDebug'], q=True, value=True)
     max_rot_deg = cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], q=True, value1=True)
+    
+    # Read flip settings from UI
+    flip_yaw = cmds.checkBox(_UI_ELEMENTS['flipYaw'], q=True, value=True)
+    flip_pitch = cmds.checkBox(_UI_ELEMENTS['flipPitch'], q=True, value=True)
 
-    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, VERBOSE_DEBUG, MAX_ROTATION_DELTA_DEG
+    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, VERBOSE_DEBUG, MAX_ROTATION_DELTA_DEG, FLIP_YAW, FLIP_PITCH
     SMOOTH_MODE = mode
     SMOOTH_ALPHA = alpha
+    TARGET_FPS = fps
+    CAMERA_NAME = cam
+    POS_ALPHA = pos_alpha
+    ROT_ALPHA = rot_alpha
+    MIN_UPDATE_INTERVAL = max(1e-4, min_interval)
+    MAX_BATCH_READ = max(1, max_batch)
+    VERBOSE_DEBUG = bool(verbose)
+    MAX_ROTATION_DELTA_DEG = float(max_rot_deg)
+    FLIP_YAW = flip_yaw
+    FLIP_PITCH = flip_pitch
     TARGET_FPS = fps
     CAMERA_NAME = cam
     POS_ALPHA = pos_alpha
