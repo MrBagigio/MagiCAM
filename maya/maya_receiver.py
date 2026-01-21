@@ -290,29 +290,30 @@ def _arkit_to_maya_matrix(mat_list):
     FLIP_PITCH: When True, reflects across YZ plane (negates X axis)
     
     Uses proper reflection matrices to preserve orthogonality.
+    Applies reflections on the RIGHT side (post-multiply) to transform the object's
+    local axes rather than the world space.
     """
     try:
         # Start with input matrix
         mm = _rowlist_to_mmatrix(mat_list)
         
-        # Apply reflection matrices if needed
+        # Apply reflection matrices on the RIGHT (post-multiply)
+        # This transforms the local coordinate system
         if FLIP_YAW:
-            # Reflect across XY plane: negate Z
-            # Reflection matrix: diag(1, 1, -1, 1)
+            # Reflect Z axis: post-multiply by diag(1, 1, -1, 1)
             reflect_z = [1, 0, 0, 0,
                         0, 1, 0, 0,
                         0, 0, -1, 0,
                         0, 0, 0, 1]
-            mm = _rowlist_to_mmatrix(reflect_z) * mm
+            mm = mm * _rowlist_to_mmatrix(reflect_z)
         
         if FLIP_PITCH:
-            # Reflect across YZ plane: negate X
-            # Reflection matrix: diag(-1, 1, 1, 1)
+            # Reflect X axis: post-multiply by diag(-1, 1, 1, 1)
             reflect_x = [-1, 0, 0, 0,
                         0, 1, 0, 0,
                         0, 0, 1, 0,
                         0, 0, 0, 1]
-            mm = _rowlist_to_mmatrix(reflect_x) * mm
+            mm = mm * _rowlist_to_mmatrix(reflect_x)
         
         return list(mm)
     except Exception as e:
@@ -552,6 +553,8 @@ def _process_packet(data, from_batch=False):
             if not _validate_matrix(m):
                 print('[MagiCAM] Invalid calib matrix, ignoring')
                 return
+            # Apply axis flips before calibration
+            m = _arkit_to_maya_matrix(m)
             _calibrate_from_incoming(m)
             if LOG_ENABLED:
                 _log(f"calib,{time.time()}")
@@ -911,6 +914,16 @@ def _apply_preset_faithful():
         cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], e=True, value1=0.0)
         cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], e=True, value1=1)
         cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], e=True, value1=180.0)
+        # Apply immediately to globals
+        global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, MAX_ROTATION_DELTA_DEG
+        SMOOTH_MODE = 'none'
+        SMOOTH_ALPHA = 1.0
+        TARGET_FPS = 60
+        POS_ALPHA = 1.0
+        ROT_ALPHA = 1.0
+        MIN_UPDATE_INTERVAL = 0.0
+        MAX_BATCH_READ = 1
+        MAX_ROTATION_DELTA_DEG = 180.0
         print('[MagiCAM] Preset FAITHFUL applied - direct 1:1 tracking')
     except Exception as e:
         print('[MagiCAM] Preset error:', e)
@@ -927,6 +940,18 @@ def _apply_preset_smooth():
         cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], e=True, value1=0.033)
         cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], e=True, value1=8)
         cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], e=True, value1=45.0)
+        # Apply immediately to globals
+        global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, MAX_ROTATION_DELTA_DEG
+        SMOOTH_MODE = 'matrix_interp'
+        SMOOTH_ALPHA = 0.25
+        TARGET_FPS = 30
+        POS_ALPHA = 0.4
+        ROT_ALPHA = 0.5
+        MIN_UPDATE_INTERVAL = 0.033
+        MAX_BATCH_READ = 8
+        MAX_ROTATION_DELTA_DEG = 45.0
+        # Start interpolation thread if needed
+        _start_interp_thread()
         print('[MagiCAM] Preset SMOOTH applied - interpolated cinematic tracking')
     except Exception as e:
         print('[MagiCAM] Preset error:', e)
@@ -943,6 +968,22 @@ def _apply_preset_predictive():
         cmds.floatFieldGrp(_UI_ELEMENTS['minInterval'], e=True, value1=0.016)
         cmds.intFieldGrp(_UI_ELEMENTS['maxBatch'], e=True, value1=4)
         cmds.floatFieldGrp(_UI_ELEMENTS['maxRotDeg'], e=True, value1=90.0)
+        # Apply immediately to globals
+        global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, MAX_ROTATION_DELTA_DEG
+        SMOOTH_MODE = 'alpha_beta'
+        SMOOTH_ALPHA = 0.5
+        TARGET_FPS = 60
+        POS_ALPHA = 0.6
+        ROT_ALPHA = 0.6
+        MIN_UPDATE_INTERVAL = 0.016
+        MAX_BATCH_READ = 4
+        MAX_ROTATION_DELTA_DEG = 90.0
+        # Reset filters
+        for f in POS_FILTERS:
+            f.reset()
+        global LAST_QUAT, LAST_POS
+        LAST_QUAT = None
+        LAST_POS = None
         print('[MagiCAM] Preset PREDICTIVE applied - alpha-beta filtered tracking')
     except Exception as e:
         print('[MagiCAM] Preset error:', e)
