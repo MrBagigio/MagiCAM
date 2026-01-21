@@ -9,6 +9,7 @@
 		A2 /* ARKitSenderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2 /* ARKitSenderApp.swift */; };
 		A3 /* ARSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3 /* ARSessionManager.swift */; };
 		A4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4 /* ContentView.swift */; };
+		A5 /* ViewportStreamReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6 /* ViewportStreamReceiver.swift */; };
 		/* End PBXBuildFile section */
 
 		/* Begin PBXSourcesBuildPhase section */
@@ -20,6 +21,7 @@
 				A2,
 				A3,
 				A4,
+				A5,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -31,6 +33,7 @@
 		F3 /* ARSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ARSessionManager.swift; sourceTree = "<group>"; };
 		F4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ContentView.swift; sourceTree = "<group>"; };
 		F5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = swift/Info.plist; sourceTree = "<group>"; };
+		F6 /* ViewportStreamReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = swift/ViewportStreamReceiver.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 		/* Begin PBXGroup section */
@@ -42,6 +45,7 @@
 				F2,
 				F1,
 				F4,
+				F6,
 			);
 			path = "";
 			sourceTree = "<group>";

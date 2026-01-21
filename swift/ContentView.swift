@@ -9,10 +9,13 @@ extension Color {
 
 struct ContentView: View {
     @StateObject var manager = ARSessionManager()
+    @StateObject var streamReceiver = ViewportStreamReceiver()
     @State var host: String = "192.168.1.100"
     @State var port: String = "9000"
+    @State var streamPort: String = "9001"
     @State var isRunning = false
     @State var showSettings = false
+    @State var showViewport = false
     @State var frameCount: Int = 0
     
     // Timer for updating frame count
@@ -27,6 +30,11 @@ struct ContentView: View {
                 endPoint: .bottom
             )
             .edgesIgnoringSafeArea(.all)
+            
+            // Viewport stream overlay (when active)
+            if showViewport, let frame = streamReceiver.currentFrame {
+                viewportOverlay(image: frame)
+            }
             
             VStack(spacing: 0) {
                 // Header
@@ -44,6 +52,9 @@ struct ContentView: View {
                     
                     // Control buttons
                     controlButtonsView
+                    
+                    // Viewport stream button
+                    viewportButtonView
                     
                     // Stats
                     if isRunning {
@@ -64,6 +75,61 @@ struct ContentView: View {
                 frameCount += 1
             }
         }
+    }
+    
+    // MARK: - Viewport Overlay
+    func viewportOverlay(image: UIImage) -> some View {
+        ZStack {
+            // Semi-transparent background
+            Color.black.opacity(0.85)
+                .edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 16) {
+                // Title bar
+                HStack {
+                    Text("Maya Viewport")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                    
+                    Spacer()
+                    
+                    if streamReceiver.isConnected {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                            Text("\(streamReceiver.fps) FPS")
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .foregroundColor(.green)
+                        }
+                    }
+                    
+                    Button(action: {
+                        withAnimation(.spring()) {
+                            showViewport = false
+                            streamReceiver.stop()
+                        }
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 50)
+                
+                // Viewport image
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .cornerRadius(12)
+                    .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+                    .padding(.horizontal, 20)
+                
+                Spacer()
+            }
+        }
+        .transition(.opacity)
     }
     
     // MARK: - Header
@@ -165,25 +231,47 @@ struct ContentView: View {
                     )
             )
             
-            // Port field
-            HStack {
-                Image(systemName: "number")
-                    .foregroundColor(.purple)
-                    .frame(width: 30)
+            HStack(spacing: 12) {
+                // Port field
+                HStack {
+                    Image(systemName: "number")
+                        .foregroundColor(.purple)
+                        .frame(width: 24)
+                    
+                    TextField("Port", text: $port)
+                        .keyboardType(.numberPad)
+                        .foregroundColor(.white)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.purple.opacity(0.3), lineWidth: 1)
+                        )
+                )
                 
-                TextField("Port", text: $port)
-                    .keyboardType(.numberPad)
-                    .foregroundColor(.white)
+                // Stream port field
+                HStack {
+                    Image(systemName: "video")
+                        .foregroundColor(.orange)
+                        .frame(width: 24)
+                    
+                    TextField("Stream", text: $streamPort)
+                        .keyboardType(.numberPad)
+                        .foregroundColor(.white)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                        )
+                )
             }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.purple.opacity(0.3), lineWidth: 1)
-                    )
-            )
         }
     }
     
@@ -257,6 +345,51 @@ struct ContentView: View {
             .disabled(!isRunning)
             .opacity(isRunning ? 1.0 : 0.5)
         }
+    }
+    
+    // MARK: - Viewport Button
+    var viewportButtonView: some View {
+        Button(action: {
+            if showViewport {
+                streamReceiver.stop()
+                withAnimation(.spring()) {
+                    showViewport = false
+                }
+            } else {
+                let sp = UInt16(streamPort) ?? 9001
+                streamReceiver.start(host: host, port: sp)
+                withAnimation(.spring()) {
+                    showViewport = true
+                }
+            }
+            // Haptic feedback
+            let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+            impactFeedback.impactOccurred()
+        }) {
+            HStack(spacing: 10) {
+                Image(systemName: showViewport ? "eye.slash.fill" : "eye.fill")
+                    .font(.system(size: 18, weight: .medium))
+                
+                Text(showViewport ? "HIDE VIEWPORT" : "SHOW VIEWPORT")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+            }
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: showViewport ? [.orange, .red] : [.orange, .yellow]),
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .shadow(color: Color.orange.opacity(0.3), radius: 8, y: 4)
+            )
+        }
+        .disabled(!isRunning)
+        .opacity(isRunning ? 1.0 : 0.5)
     }
     
     // MARK: - Stats View

@@ -413,24 +413,11 @@ def _apply_matrix_to_camera(mat_list):
                 return
             # Apply rotation via matrix and set translation explicitly (row-major indices 3,7,11)
             tx, ty, tz = final_matrix[3], final_matrix[7], final_matrix[11]
-            try:
-                # Apply full matrix to set rotation and other components
-                cmds.xform(CAMERA_NAME, ws=True, matrix=final_matrix)
-                # Then explicitly set translation (avoids matrix->translation mismatch)
-                cmds.xform(CAMERA_NAME, ws=True, translation=(tx, ty, tz))
-                _log(f"apply_success,tx={tx:.6f},ty={ty:.6f},tz={tz:.6f}")
-            except Exception as e:
-                print('Error applying matrix/translation:', e)
-                try:
-                    _log(f"apply_error,{e}")
-                except Exception:
-                    pass
-        except Exception as e:
-            print('Error applying matrix:', e)
-            try:
-                _log(f"apply_error,{e}")
-            except Exception:
-                pass
+            # Apply full matrix to set rotation and other components
+            cmds.xform(CAMERA_NAME, ws=True, matrix=final_matrix)
+            # Then explicitly set translation (avoids matrix->translation mismatch)
+            cmds.xform(CAMERA_NAME, ws=True, translation=(tx, ty, tz))
+            _log(f"apply_success,tx={tx:.6f},ty={ty:.6f},tz={tz:.6f}")
         except Exception as e:
             print('Error applying matrix:', e)
             try:
@@ -528,6 +515,8 @@ def _process_packet(data, from_batch=False):
                 return
             LAST_RECEIVE_TIME = now
             RECEIVED_FRAMES += 1
+            # Convert ARKit coordinate system to Maya coordinate system
+            m = _arkit_to_maya_matrix(m)
             _apply_matrix_to_camera(m)
             if LOG_ENABLED:
                 _log(f"pose,{time.time()},{m[:4]}")
@@ -994,6 +983,13 @@ def show_ui():
     _UI_ELEMENTS['maxRotDeg'] = cmds.floatFieldGrp(numberOfFields=1, label='Max Rot Delta (deg)', value1=prefs.get('max_rot_deg', MAX_ROTATION_DELTA_DEG))
 
     cmds.separator(height=10)
+    cmds.text(label='Coordinate Flips (ARKit→Maya)')
+    cmds.rowLayout(numberOfColumns=2)
+    _UI_ELEMENTS['flipYaw'] = cmds.checkBox(label='Flip Yaw (left/right)', value=FLIP_YAW, changeCommand=lambda v: set_flip_yaw(v))
+    _UI_ELEMENTS['flipPitch'] = cmds.checkBox(label='Flip Pitch (up/down)', value=FLIP_PITCH, changeCommand=lambda v: set_flip_pitch(v))
+    cmds.setParent('..')
+
+    cmds.separator(height=10)
     cmds.rowLayout(numberOfColumns=5)
     cmds.button(label='Start', command=lambda *_: _ui_start())
     cmds.button(label='Stop', command=lambda *_: _ui_stop())
@@ -1009,6 +1005,21 @@ def show_ui():
     cmds.button(label='Disable Log', command=lambda *_: disable_logging())
     cmds.button(label='Close', command=lambda *_: close_ui())
     cmds.setParent('..')
+
+    cmds.separator(height=10)
+    cmds.text(label='Viewport Streaming (to Phone)', font='boldLabelFont')
+    cmds.rowLayout(numberOfColumns=4)
+    _UI_ELEMENTS['streamPort'] = cmds.intFieldGrp(numberOfFields=1, label='Port', value1=prefs.get('stream_port', STREAM_PORT))
+    _UI_ELEMENTS['streamFps'] = cmds.intFieldGrp(numberOfFields=1, label='FPS', value1=prefs.get('stream_fps', STREAM_FPS))
+    _UI_ELEMENTS['streamQuality'] = cmds.intFieldGrp(numberOfFields=1, label='Quality', value1=prefs.get('stream_quality', STREAM_QUALITY))
+    cmds.setParent('..')
+    cmds.rowLayout(numberOfColumns=4)
+    _UI_ELEMENTS['streamWidth'] = cmds.intFieldGrp(numberOfFields=1, label='Width', value1=prefs.get('stream_width', STREAM_WIDTH))
+    _UI_ELEMENTS['streamHeight'] = cmds.intFieldGrp(numberOfFields=1, label='Height', value1=prefs.get('stream_height', STREAM_HEIGHT))
+    cmds.button(label='Start Stream', command=lambda *_: _ui_start_stream(), bgc=(0.2, 0.5, 0.2))
+    cmds.button(label='Stop Stream', command=lambda *_: stop_stream(), bgc=(0.5, 0.2, 0.2))
+    cmds.setParent('..')
+    _UI_ELEMENTS['streamStatus'] = cmds.text(label='Stream: stopped')
 
     cmds.showWindow(win)
 
@@ -1070,6 +1081,33 @@ def _ui_stop():
         cmds.text(_UI_ELEMENTS['statusText'], e=True, label='Status: stopped')
     except Exception:
         pass
+
+
+def _ui_start_stream():
+    """Start viewport streaming with UI parameters."""
+    try:
+        port = cmds.intFieldGrp(_UI_ELEMENTS['streamPort'], q=True, value1=True)
+        fps = cmds.intFieldGrp(_UI_ELEMENTS['streamFps'], q=True, value1=True)
+        quality = cmds.intFieldGrp(_UI_ELEMENTS['streamQuality'], q=True, value1=True)
+        width = cmds.intFieldGrp(_UI_ELEMENTS['streamWidth'], q=True, value1=True)
+        height = cmds.intFieldGrp(_UI_ELEMENTS['streamHeight'], q=True, value1=True)
+        
+        start_stream(port=port, fps=fps, quality=quality, width=width, height=height)
+        
+        # Save stream prefs
+        prefs = load_prefs()
+        prefs.update({
+            'stream_port': port,
+            'stream_fps': fps,
+            'stream_quality': quality,
+            'stream_width': width,
+            'stream_height': height
+        })
+        save_prefs(prefs)
+        
+        cmds.text(_UI_ELEMENTS['streamStatus'], e=True, label=f'Stream: running on port {port}')
+    except Exception as e:
+        print(f'[MagiCAM] Error starting stream: {e}')
 
 
 def _ui_enable_log():
@@ -1168,6 +1206,244 @@ def diagnose():
     print("  maya_receiver.force_apply_matrix([1,0,0,1, 0,1,0,2, 0,0,1,3, 0,0,0,1])")
     print("=" * 60)
     return True
+
+
+# ============================================================================
+# VIEWPORT STREAMING TO PHONE
+# ============================================================================
+# Streams the Maya viewport as JPEG frames to the phone via TCP.
+
+STREAM_THREAD = None
+STREAM_RUNNING = False
+STREAM_SOCKET = None
+STREAM_CLIENTS = []
+STREAM_CLIENTS_LOCK = threading.Lock()
+STREAM_PORT = 9001
+STREAM_FPS = 15
+STREAM_QUALITY = 60  # JPEG quality 0-100
+STREAM_WIDTH = 640
+STREAM_HEIGHT = 360
+_STREAM_TEMP_DIR = None
+
+
+def _get_stream_temp_dir():
+    """Get/create temp directory for viewport captures."""
+    global _STREAM_TEMP_DIR
+    if _STREAM_TEMP_DIR is None:
+        import tempfile
+        _STREAM_TEMP_DIR = tempfile.mkdtemp(prefix='magicam_stream_')
+    return _STREAM_TEMP_DIR
+
+
+def _capture_viewport():
+    """Capture current viewport frame as JPEG bytes using the active camera."""
+    try:
+        temp_dir = _get_stream_temp_dir()
+        temp_file = os.path.join(temp_dir, 'frame.jpg')
+        
+        # Find model panel showing our camera or use active viewport
+        panels = cmds.getPanel(type='modelPanel') or []
+        target_panel = None
+        
+        for panel in panels:
+            try:
+                panel_cam = cmds.modelPanel(panel, q=True, camera=True)
+                if panel_cam == CAMERA_NAME or panel_cam.startswith(CAMERA_NAME):
+                    target_panel = panel
+                    break
+            except Exception:
+                pass
+        
+        if not target_panel and panels:
+            target_panel = panels[0]
+        
+        if not target_panel:
+            return None
+        
+        # Use playblast to capture frame
+        # Note: playblast requires Maya's main thread, so schedule via evalDeferred
+        result = [None]
+        done_event = threading.Event()
+        
+        def _do_capture():
+            try:
+                # Capture single frame to file
+                cmds.playblast(
+                    frame=cmds.currentTime(q=True),
+                    format='image',
+                    completeFilename=temp_file,
+                    sequenceTime=False,
+                    clearCache=True,
+                    viewer=False,
+                    showOrnaments=False,
+                    percent=100,
+                    compression='jpg',
+                    quality=STREAM_QUALITY,
+                    widthHeight=(STREAM_WIDTH, STREAM_HEIGHT),
+                    editorPanelName=target_panel
+                )
+                # Read the file
+                if os.path.exists(temp_file):
+                    with open(temp_file, 'rb') as f:
+                        result[0] = f.read()
+                    try:
+                        os.remove(temp_file)
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f'[MagiCAM Stream] Capture error: {e}')
+            finally:
+                done_event.set()
+        
+        cmds.evalDeferred(_do_capture)
+        done_event.wait(timeout=1.0)
+        return result[0]
+    except Exception as e:
+        print(f'[MagiCAM Stream] _capture_viewport error: {e}')
+        return None
+
+
+def _stream_accept_loop(server_sock):
+    """Accept incoming client connections."""
+    while STREAM_RUNNING:
+        try:
+            server_sock.settimeout(0.5)
+            try:
+                client, addr = server_sock.accept()
+                print(f'[MagiCAM Stream] Client connected: {addr}')
+                with STREAM_CLIENTS_LOCK:
+                    STREAM_CLIENTS.append(client)
+            except socket.timeout:
+                continue
+        except Exception as e:
+            if STREAM_RUNNING:
+                print(f'[MagiCAM Stream] Accept error: {e}')
+            break
+
+
+def _stream_sender_loop():
+    """Capture and send frames to all connected clients."""
+    interval = 1.0 / max(1, STREAM_FPS)
+    
+    while STREAM_RUNNING:
+        start = time.time()
+        
+        # Capture frame
+        jpeg_data = _capture_viewport()
+        
+        if jpeg_data:
+            # Build packet: [4 bytes length][jpeg data]
+            length = len(jpeg_data)
+            header = struct.pack('>I', length)  # big-endian 4-byte unsigned int
+            packet = header + jpeg_data
+            
+            # Send to all clients
+            with STREAM_CLIENTS_LOCK:
+                dead_clients = []
+                for client in STREAM_CLIENTS:
+                    try:
+                        client.sendall(packet)
+                    except Exception as e:
+                        print(f'[MagiCAM Stream] Send error, removing client: {e}')
+                        dead_clients.append(client)
+                
+                for dc in dead_clients:
+                    try:
+                        dc.close()
+                    except Exception:
+                        pass
+                    STREAM_CLIENTS.remove(dc)
+        
+        # Sleep for remaining interval
+        elapsed = time.time() - start
+        to_sleep = max(0.0, interval - elapsed)
+        time.sleep(to_sleep)
+
+
+def start_stream(port=9001, fps=15, quality=60, width=640, height=360):
+    """Start streaming the Maya viewport to connected clients.
+    
+    Args:
+        port: TCP port to listen on (default 9001)
+        fps: Target frames per second (default 15)
+        quality: JPEG quality 0-100 (default 60)
+        width: Frame width in pixels (default 640)
+        height: Frame height in pixels (default 360)
+    """
+    global STREAM_THREAD, STREAM_RUNNING, STREAM_SOCKET, STREAM_PORT, STREAM_FPS
+    global STREAM_QUALITY, STREAM_WIDTH, STREAM_HEIGHT
+    
+    if STREAM_RUNNING:
+        print('[MagiCAM Stream] Already running')
+        return
+    
+    STREAM_PORT = port
+    STREAM_FPS = fps
+    STREAM_QUALITY = quality
+    STREAM_WIDTH = width
+    STREAM_HEIGHT = height
+    
+    # Create TCP server
+    STREAM_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    STREAM_SOCKET.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    STREAM_SOCKET.bind(('0.0.0.0', STREAM_PORT))
+    STREAM_SOCKET.listen(5)
+    
+    STREAM_RUNNING = True
+    
+    # Start accept thread
+    accept_thread = threading.Thread(target=_stream_accept_loop, args=(STREAM_SOCKET,), daemon=True)
+    accept_thread.start()
+    
+    # Start sender thread
+    STREAM_THREAD = threading.Thread(target=_stream_sender_loop, daemon=True)
+    STREAM_THREAD.start()
+    
+    print(f'[MagiCAM Stream] Started on port {STREAM_PORT} ({STREAM_WIDTH}x{STREAM_HEIGHT} @ {STREAM_FPS}fps, quality={STREAM_QUALITY})')
+
+
+def stop_stream():
+    """Stop the viewport streaming."""
+    global STREAM_RUNNING, STREAM_SOCKET, STREAM_THREAD, STREAM_CLIENTS
+    
+    if not STREAM_RUNNING:
+        return
+    
+    STREAM_RUNNING = False
+    
+    # Close all clients
+    with STREAM_CLIENTS_LOCK:
+        for client in STREAM_CLIENTS:
+            try:
+                client.close()
+            except Exception:
+                pass
+        STREAM_CLIENTS.clear()
+    
+    # Close server socket
+    try:
+        if STREAM_SOCKET:
+            STREAM_SOCKET.close()
+    except Exception:
+        pass
+    STREAM_SOCKET = None
+    
+    # Clean up temp dir
+    global _STREAM_TEMP_DIR
+    if _STREAM_TEMP_DIR:
+        try:
+            import shutil
+            shutil.rmtree(_STREAM_TEMP_DIR, ignore_errors=True)
+        except Exception:
+            pass
+        _STREAM_TEMP_DIR = None
+    
+    print('[MagiCAM Stream] Stopped')
+
+
+def is_streaming():
+    """Check if streaming is active."""
+    return STREAM_RUNNING
 
 
 if __name__ == '__main__':
