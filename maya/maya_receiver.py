@@ -1133,7 +1133,7 @@ def apply_test_identity():
 
 def show_ui():
     """Create a simple Maya window to control the MagiCAM receiver."""
-    global _UI_ELEMENTS
+    global _UI_ELEMENTS, TRANSLATION_SCALE, ROTATION_SCALE
     prefs = load_prefs()
     if cmds.window(_UI_WINDOW_NAME, exists=True):
         cmds.deleteUI(_UI_WINDOW_NAME)
