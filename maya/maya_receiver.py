@@ -261,30 +261,29 @@ def _validate_matrix(m):
 
 def _arkit_to_maya_matrix(mat_list):
     """Convert ARKit row-major matrix to Maya coordinate system.
-    ARKit: Right-handed, Y-up (gravity), -Z forward
+    ARKit: Right-handed, Y-up, -Z forward
     Maya: Right-handed, Y-up, Z forward (or configurable)
-    
-    The main issue is that ARKit camera looks down -Z, Maya camera looks down -Z too,
-    but the coordinate frames may differ. For now, we apply a simple flip if needed.
-    
-    ARKit matrix is already row-major from the iOS app (it does mat[c][r]).
-    Maya's xform expects row-major as well, so no transpose needed.
-    
-    However, ARKit's translation is in the last COLUMN of a column-major matrix,
-    which after our row-major conversion ends up at indices 12,13,14.
-    But the iOS code does mat[c][r] which actually transposes it, putting translation at 3,7,11.
-    
-    Let's verify: iOS sends mat[c][r] for r,c in 0..3
-    - Original simd_float4x4 is column-major: columns are mat[0], mat[1], mat[2], mat[3]
-    - mat[c][r] reads column c, row r
-    - Looping r then c: arr = [mat[0][0], mat[1][0], mat[2][0], mat[3][0], mat[0][1], ...]
-    - This produces a ROW of the matrix per 4 elements = row-major
-    - Translation is in column 3 (mat[3]) = indices 3, 7, 11 in row-major
-    
-    So translation should be at indices 3, 7, 11 (tx, ty, tz).
+
+    Observed behavior: yaw is inverted (rotating phone right produces camera rotating
+    left). This is caused by a handedness/sign difference for the Z axis. To fix we
+    apply a similarity transform S * M * S where S = diag(1, 1, -1, 1). This flips the
+    Z axis and effectively inverts yaw without changing handedness unexpectedly.
+
+    The function accepts a row-major 4x4 list and returns a corrected row-major list.
     """
-    # Return as-is - the format should already be correct
-    return mat_list
+    try:
+        # Build MMatrix from incoming list (row-major)
+        mm_in = _rowlist_to_mmatrix(mat_list)
+        # Reflection matrix S = diag(1,1,-1,1)
+        S = om.MMatrix([1.0, 0.0, 0.0, 0.0,
+                        0.0, 1.0, 0.0, 0.0,
+                        0.0, 0.0, -1.0, 0.0,
+                        0.0, 0.0, 0.0, 1.0])
+        mm_out = S * mm_in * S
+        return list(mm_out)
+    except Exception as e:
+        print('Matrix conversion error:', e)
+        return mat_list
 
 
 def _start_interp_thread():
