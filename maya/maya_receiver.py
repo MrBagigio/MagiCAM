@@ -1237,9 +1237,11 @@ def _get_stream_temp_dir():
 
 def _capture_viewport():
     """Capture current viewport frame as JPEG bytes using the active camera."""
+    global _STREAM_FRAME_DATA, _STREAM_FRAME_READY
     try:
         temp_dir = _get_stream_temp_dir()
-        temp_file = os.path.join(temp_dir, 'frame.jpg')
+        # Use unique filename to avoid conflicts
+        temp_file = os.path.join(temp_dir, f'frame_{int(time.time()*1000)}.jpg')
         
         # Find model panel showing our camera or use active viewport
         panels = cmds.getPanel(type='modelPanel') or []
@@ -1258,6 +1260,7 @@ def _capture_viewport():
             target_panel = panels[0]
         
         if not target_panel:
+            print('[MagiCAM Stream] No model panel found')
             return None
         
         # Use playblast to capture frame
@@ -1267,22 +1270,68 @@ def _capture_viewport():
         
         def _do_capture():
             try:
-                # Capture single frame to file
+                # Remove old file if exists
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                
+                # Capture single frame to file using iff format then convert
+                # playblast doesn't support jpg directly in all Maya versions
+                iff_file = temp_file.replace('.jpg', '.iff')
+                
                 cmds.playblast(
                     frame=cmds.currentTime(q=True),
-                    format='image',
-                    completeFilename=temp_file,
+                    format='iff',
+                    completeFilename=iff_file,
                     sequenceTime=False,
                     clearCache=True,
                     viewer=False,
                     showOrnaments=False,
                     percent=100,
-                    compression='jpg',
-                    quality=STREAM_QUALITY,
+                    quality=100,
                     widthHeight=(STREAM_WIDTH, STREAM_HEIGHT),
-                    editorPanelName=target_panel
+                    offScreen=True
                 )
-                # Read the file
+                
+                # Convert IFF to JPEG using Maya's image conversion
+                if os.path.exists(iff_file):
+                    # Try to use Maya's convertSolidTx or read raw and encode
+                    try:
+                        import maya.api.OpenMaya as om2
+                        # Read the IFF file
+                        img = om2.MImage()
+                        img.readFromFile(iff_file)
+                        # Write as JPEG
+                        img.writeToFile(temp_file, 'jpg')
+                        os.remove(iff_file)
+                    except Exception as conv_err:
+                        print(f'[MagiCAM Stream] IFF conversion error: {conv_err}')
+                        # Fallback: try PNG format which is more compatible
+                        try:
+                            os.remove(iff_file)
+                            png_file = temp_file.replace('.jpg', '.png')
+                            cmds.playblast(
+                                frame=cmds.currentTime(q=True),
+                                format='image',
+                                completeFilename=png_file,
+                                sequenceTime=False,
+                                clearCache=True,
+                                viewer=False,
+                                showOrnaments=False,
+                                percent=100,
+                                compression='png',
+                                quality=100,
+                                widthHeight=(STREAM_WIDTH, STREAM_HEIGHT),
+                                offScreen=True
+                            )
+                            if os.path.exists(png_file):
+                                # Read PNG and return raw (phone can decode PNG too)
+                                with open(png_file, 'rb') as f:
+                                    result[0] = f.read()
+                                os.remove(png_file)
+                        except Exception as png_err:
+                            print(f'[MagiCAM Stream] PNG fallback error: {png_err}')
+                
+                # Read the JPEG file if it exists
                 if os.path.exists(temp_file):
                     with open(temp_file, 'rb') as f:
                         result[0] = f.read()
@@ -1290,6 +1339,7 @@ def _capture_viewport():
                         os.remove(temp_file)
                     except Exception:
                         pass
+                        
             except Exception as e:
                 print(f'[MagiCAM Stream] Capture error: {e}')
             finally:
@@ -1322,20 +1372,35 @@ def _stream_accept_loop(server_sock):
 
 
 def _stream_sender_loop():
-    """Capture and send frames to all connected clients."""
+    """Capture and send frames to all connected clients using Maya's main thread."""
+    global _PENDING_STREAM_FRAME
     interval = 1.0 / max(1, STREAM_FPS)
     
     while STREAM_RUNNING:
         start = time.time()
         
-        # Capture frame
-        jpeg_data = _capture_viewport()
+        # Request frame capture via evalDeferred (will be set by _do_stream_capture)
+        _PENDING_STREAM_FRAME = None
         
-        if jpeg_data:
-            # Build packet: [4 bytes length][jpeg data]
-            length = len(jpeg_data)
+        def _request_capture():
+            _do_stream_capture_sync()
+        
+        try:
+            cmds.evalDeferred(_request_capture)
+        except Exception as e:
+            print(f'[MagiCAM Stream] evalDeferred error: {e}')
+        
+        # Wait a bit for the capture to complete
+        time.sleep(0.05)
+        
+        # Check if we got a frame
+        frame_data = _PENDING_STREAM_FRAME
+        
+        if frame_data:
+            # Build packet: [4 bytes length][frame data]
+            length = len(frame_data)
             header = struct.pack('>I', length)  # big-endian 4-byte unsigned int
-            packet = header + jpeg_data
+            packet = header + frame_data
             
             # Send to all clients
             with STREAM_CLIENTS_LOCK:
@@ -1358,6 +1423,52 @@ def _stream_sender_loop():
         elapsed = time.time() - start
         to_sleep = max(0.0, interval - elapsed)
         time.sleep(to_sleep)
+
+
+# Global for passing frame data from main thread
+_PENDING_STREAM_FRAME = None
+
+
+def _do_stream_capture_sync():
+    """Capture viewport frame synchronously (must be called from Maya main thread)."""
+    global _PENDING_STREAM_FRAME
+    try:
+        temp_dir = _get_stream_temp_dir()
+        temp_file = os.path.join(temp_dir, f'frame_{int(time.time()*1000)}.png')
+        
+        # Remove old file if exists
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+        
+        # Capture using playblast with PNG format (more reliable)
+        cmds.playblast(
+            frame=cmds.currentTime(q=True),
+            format='image',
+            completeFilename=temp_file,
+            sequenceTime=False,
+            clearCache=True,
+            viewer=False,
+            showOrnaments=False,
+            percent=100,
+            compression='png',
+            quality=100,
+            widthHeight=(STREAM_WIDTH, STREAM_HEIGHT),
+            offScreen=True
+        )
+        
+        # Read the file
+        if os.path.exists(temp_file):
+            with open(temp_file, 'rb') as f:
+                _PENDING_STREAM_FRAME = f.read()
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass
+        else:
+            print('[MagiCAM Stream] Playblast did not create file')
+            
+    except Exception as e:
+        print(f'[MagiCAM Stream] Capture sync error: {e}')
 
 
 def start_stream(port=9001, fps=15, quality=60, width=640, height=360):
