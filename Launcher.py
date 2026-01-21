@@ -84,3 +84,24 @@ clear_magicam_cache()
 
 # Open the UI (use the reloaded module)
 maya_receiver.show_ui()   # apre la finestra: premi "Start"
+
+# --- DEBUG HELPERS (temporary) ---
+# If you want to auto-enable logging and set the Faithful preset when Launcher
+# is executed inside Maya (useful for quick debugging), set DEBUG_ON_START = True.
+DEBUG_ON_START = True
+if DEBUG_ON_START:
+    try:
+        maya_receiver.enable_logging('C:/temp/magicam_log.csv')
+    except Exception as e:
+        print('Debug: enable_logging failed:', e)
+    try:
+        maya_receiver.reset_calibration()
+    except Exception as e:
+        print('Debug: reset_calibration failed:', e)
+    try:
+        # apply faithful preset (no smoothing, direct 1:1)
+        maya_receiver._apply_preset_faithful()
+    except Exception as e:
+        print('Debug: apply_preset_faithful failed:', e)
+    print('Debug startup: logging enabled, calibration reset, faithful preset applied')
+# --- END DEBUG HELPERS ---
