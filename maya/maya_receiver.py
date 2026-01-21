@@ -399,45 +399,24 @@ def _apply_matrix_to_camera(mat_list):
             if not cmds.objExists(CAMERA_NAME):
                 cmds.warning(f"Camera '{CAMERA_NAME}' not found")
                 return
-            # DEBUG: log current camera matrix and the translation we are applying
+            # Apply rotation via matrix and set translation explicitly (row-major indices 3,7,11)
+            tx, ty, tz = final_matrix[3], final_matrix[7], final_matrix[11]
             try:
-                # gather diagnostic info about camera node before applying
-                cur = cmds.xform(CAMERA_NAME, q=True, ws=True, matrix=True)
-                tx, ty, tz = final_matrix[3], final_matrix[7], final_matrix[11]
-                node_type = cmds.nodeType(CAMERA_NAME)
-                parent = cmds.listRelatives(CAMERA_NAME, p=True) or []
-                tx_settable = cmds.getAttr(f"{CAMERA_NAME}.translateX", settable=True)
-                ty_settable = cmds.getAttr(f"{CAMERA_NAME}.translateY", settable=True)
-                tz_settable = cmds.getAttr(f"{CAMERA_NAME}.translateZ", settable=True)
-                tx_conn = cmds.listConnections(f"{CAMERA_NAME}.translateX", s=True, d=False) or []
-                ty_conn = cmds.listConnections(f"{CAMERA_NAME}.translateY", s=True, d=False) or []
-                tz_conn = cmds.listConnections(f"{CAMERA_NAME}.translateZ", s=True, d=False) or []
-                cur_trans = None
+                # Apply full matrix to set rotation and other components
+                cmds.xform(CAMERA_NAME, ws=True, matrix=final_matrix)
+                # Then explicitly set translation (avoids matrix->translation mismatch)
+                cmds.xform(CAMERA_NAME, ws=True, translation=(tx, ty, tz))
+                _log(f"apply_success,tx={tx:.6f},ty={ty:.6f},tz={tz:.6f}")
+            except Exception as e:
+                print('Error applying matrix/translation:', e)
                 try:
-                    cur_trans = cmds.xform(CAMERA_NAME, q=True, ws=True, translation=True)
+                    _log(f"apply_error,{e}")
                 except Exception:
                     pass
-                _log(f"apply_attempt,tx={tx:.6f},ty={ty:.6f},tz={tz:.6f}")
-                _log(f"camera_info,type={node_type},parent={parent},tx_settable={tx_settable},ty_settable={ty_settable},tz_settable={tz_settable}")
-                _log(f"translate_connections,tx={tx_conn},ty={ty_conn},tz={tz_conn}")
-                _log(f"before_matrix,{cur}")
-                if cur_trans is not None:
-                    _log(f"before_translation,{cur_trans}")
-            except Exception:
-                pass
-
-            cmds.xform(CAMERA_NAME, ws=True, matrix=final_matrix)
-
+        except Exception as e:
+            print('Error applying matrix:', e)
             try:
-                after = cmds.xform(CAMERA_NAME, q=True, ws=True, matrix=True)
-                after_trans = None
-                try:
-                    after_trans = cmds.xform(CAMERA_NAME, q=True, ws=True, translation=True)
-                except Exception:
-                    pass
-                _log(f"after_matrix,{after}")
-                if after_trans is not None:
-                    _log(f"after_translation,{after_trans}")
+                _log(f"apply_error,{e}")
             except Exception:
                 pass
         except Exception as e:
