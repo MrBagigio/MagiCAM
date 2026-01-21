@@ -399,9 +399,26 @@ def _apply_matrix_to_camera(mat_list):
             if not cmds.objExists(CAMERA_NAME):
                 cmds.warning(f"Camera '{CAMERA_NAME}' not found")
                 return
+            # DEBUG: log current camera matrix and the translation we are applying
+            try:
+                cur = cmds.xform(CAMERA_NAME, q=True, ws=True, matrix=True)
+                tx, ty, tz = final_matrix[3], final_matrix[7], final_matrix[11]
+                _log(f"apply_attempt,tx={tx:.6f},ty={ty:.6f},tz={tz:.6f}")
+                _log(f"before_matrix,{cur}")
+            except Exception:
+                pass
             cmds.xform(CAMERA_NAME, ws=True, matrix=final_matrix)
+            try:
+                after = cmds.xform(CAMERA_NAME, q=True, ws=True, matrix=True)
+                _log(f"after_matrix,{after}")
+            except Exception:
+                pass
         except Exception as e:
             print('Error applying matrix:', e)
+            try:
+                _log(f"apply_error,{e}")
+            except Exception:
+                pass
 
     if SMOOTH_MODE == 'none':
         final = mat_list
