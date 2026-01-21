@@ -8,10 +8,10 @@ jobs:
     name: Build and (optionally) sign IPA
     runs-on: macos-latest
     env:
-      PROJECT: "swift/MagiCAM.xcodeproj"
-      SCHEME: "ARKitSender"
+      PROJECT: "MagiCAM.xcodeproj"
+      SCHEME: "MagiCAM"
       CONFIG: "Release"
-      ARCHIVE_PATH: "${{ runner.workspace }}/build/ARKitSender.xcarchive"
+      ARCHIVE_PATH: "${{ runner.workspace }}/build/MagiCAM.xcarchive"
       EXPORT_PATH: "${{ runner.workspace }}/build/export"
     steps:
       - name: Checkout
@@ -100,7 +100,7 @@ jobs:
       - name: Upload IPA if produced
         uses: actions/upload-artifact@v4
         with:
-          name: ARKitSender-artifacts
+          name: MagiCAM-artifacts
           path: |
             ${{ env.EXPORT_PATH }}/*.ipa
             ${{ env.ARCHIVE_PATH }}
@@ -108,5 +108,5 @@ jobs:
 
       - name: Print build results
         run: |
-          echo "Done. If IPA was created it is uploaded as artifact named ARKitSender-artifacts."
+          echo "Done. If IPA was created it is uploaded as artifact named MagiCAM-artifacts."
 
