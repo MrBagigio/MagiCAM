@@ -182,6 +182,15 @@ LAST_POS = None
 _UI_WINDOW_NAME = 'MagiCAM_UI'
 _UI_ELEMENTS = {}
 
+# Recording globals
+RECORDING = False
+RECORD_ADVANCE_FRAME = True
+
+# Movement scaling globals
+TRANSLATION_SCALE = 1.0  # multiply incoming translation by this
+ROTATION_SCALE = 1.0     # multiply incoming rotation angle by this (1.0 = 100%)
+
+
 # Preferences
 _PREFS_PATH = os.path.join(os.path.expanduser('~'), '.magicam_prefs.json')
 
@@ -195,10 +204,12 @@ FLIP_PITCH = True  # Flip X: left/right movement + pitch rotation
 
 def save_prefs(prefs):
     try:
-        # include flip settings
+        # include flip settings and scales
         prefs = dict(prefs)
         prefs['flip_yaw'] = FLIP_YAW
         prefs['flip_pitch'] = FLIP_PITCH
+        prefs['translation_scale'] = TRANSLATION_SCALE
+        prefs['rotation_scale'] = ROTATION_SCALE
         with open(_PREFS_PATH, 'w') as f:
             json.dump(prefs, f)
         print('Preferences saved')
@@ -212,10 +223,12 @@ def load_prefs():
             with open(_PREFS_PATH, 'r') as f:
                 p = json.load(f)
                 # load flip settings if present
-                global FLIP_YAW, FLIP_PITCH
+                global FLIP_YAW, FLIP_PITCH, TRANSLATION_SCALE, ROTATION_SCALE
                 FLIP_YAW = p.get('flip_yaw', FLIP_YAW)
                 FLIP_PITCH = p.get('flip_pitch', FLIP_PITCH)
-                print(f"Prefs loaded: flip_yaw={FLIP_YAW}, flip_pitch={FLIP_PITCH}")
+                TRANSLATION_SCALE = p.get('translation_scale', TRANSLATION_SCALE)
+                ROTATION_SCALE = p.get('rotation_scale', ROTATION_SCALE)
+                print(f"Prefs loaded: flip_yaw={FLIP_YAW}, flip_pitch={FLIP_PITCH}, trans_scale={TRANSLATION_SCALE}, rot_scale={ROTATION_SCALE}")
                 return p
     except Exception as e:
         print('Failed to load prefs:', e)
@@ -330,6 +343,55 @@ def _start_interp_thread():
     INTERP_THREAD.start()
 
 
+def _scale_matrix(mat_list):
+    """Scale translation and rotation of an incoming row-major 4x4 matrix.
+    - Translation scaled by TRANSLATION_SCALE
+    - Rotation angle scaled by ROTATION_SCALE (axis preserved)
+    """
+    try:
+        # scale translation
+        out = list(mat_list)
+        out[3] = out[3] * TRANSLATION_SCALE
+        out[7] = out[7] * TRANSLATION_SCALE
+        out[11] = out[11] * TRANSLATION_SCALE
+
+        # scale rotation: convert to quat, scale angle
+        q = _mat_to_quat(mat_list)
+        qw, qx, qy, qz = q
+        # normalize
+        norm = math.sqrt(qw*qw + qx*qx + qy*qy + qz*qz)
+        if norm == 0:
+            return out
+        qw /= norm; qx /= norm; qy /= norm; qz /= norm
+        # compute angle
+        angle = 2.0 * math.acos(max(-1.0, min(1.0, qw)))
+        # if angle very small, skip
+        if abs(angle) < 1e-6:
+            return out
+        s = math.sin(angle / 2.0)
+        if abs(s) < 1e-8:
+            return out
+        ax = qx / s
+        ay = qy / s
+        az = qz / s
+        # new angle
+        new_angle = angle * ROTATION_SCALE
+        new_s = math.sin(new_angle / 2.0)
+        new_qw = math.cos(new_angle / 2.0)
+        new_qx = ax * new_s
+        new_qy = ay * new_s
+        new_qz = az * new_s
+        new_q = (new_qw, new_qx, new_qy, new_qz)
+        rot_mat = _quat_to_mat(new_q)
+        out[0], out[1], out[2] = rot_mat[0], rot_mat[1], rot_mat[2]
+        out[4], out[5], out[6] = rot_mat[4], rot_mat[5], rot_mat[6]
+        out[8], out[9], out[10] = rot_mat[8], rot_mat[9], rot_mat[10]
+        return out
+    except Exception as e:
+        print('Scale matrix error:', e)
+        return list(mat_list)
+
+
 def _stop_interp_thread():
     global INTERP_RUNNING, INTERP_THREAD
     INTERP_RUNNING = False
@@ -440,6 +502,17 @@ def _apply_matrix_to_camera(mat_list):
             # Then explicitly set translation (avoids matrix->translation mismatch)
             cmds.xform(CAMERA_NAME, ws=True, translation=(tx, ty, tz))
             _log(f"apply_success,tx={tx:.6f},ty={ty:.6f},tz={tz:.6f}")
+
+            # If recording is enabled, write keyframe(s) for translate and rotate
+            if RECORDING:
+                try:
+                    cur = cmds.currentTime(q=True)
+                    cmds.setKeyframe(CAMERA_NAME, at=['translate','rotate'], t=cur)
+                    if RECORD_ADVANCE_FRAME:
+                        cmds.currentTime(cur + 1, edit=True)
+                    _log(f"record_keyframe,t={cur}")
+                except Exception as re:
+                    print('Recording error:', re)
         except Exception as e:
             print('Error applying matrix:', e)
             try:
@@ -539,6 +612,11 @@ def _process_packet(data, from_batch=False):
             RECEIVED_FRAMES += 1
             # Convert ARKit coordinate system to Maya coordinate system
             m = _arkit_to_maya_matrix(m)
+            # Apply movement scaling
+            try:
+                m = _scale_matrix(m)
+            except Exception:
+                pass
             _apply_matrix_to_camera(m)
             if LOG_ENABLED:
                 _log(f"pose,{time.time()},{m[:4]}")
@@ -903,6 +981,28 @@ def disable_logging():
     print('Logging disabled')
 
 
+# Recording controls
+def start_recording(advance_frame: bool = True):
+    """Start recording keyframes for the controlled camera.
+    advance_frame: if True, advance the timeline by +1 frame after each keyframe."""
+    global RECORDING, RECORD_ADVANCE_FRAME
+    RECORDING = True
+    RECORD_ADVANCE_FRAME = bool(advance_frame)
+    print(f'[MagiCAM] Recording started (advance_frame={RECORD_ADVANCE_FRAME})')
+
+
+def stop_recording():
+    """Stop recording keyframes."""
+    global RECORDING
+    RECORDING = False
+    print('[MagiCAM] Recording stopped')
+
+
+def is_recording():
+    return RECORDING
+
+
+
 def _apply_preset_faithful():
     """Apply 1:1 faithful tracking preset - no smoothing, direct matrix application."""
     try:
@@ -989,6 +1089,40 @@ def _apply_preset_predictive():
         print('[MagiCAM] Preset error:', e)
 
 
+def _apply_preset_slow():
+    """Slow movement preset - useful for walking speed"""
+    try:
+        # Set scales to slow values
+        global TRANSLATION_SCALE, ROTATION_SCALE
+        TRANSLATION_SCALE = 0.25
+        ROTATION_SCALE = 0.5
+        # Update UI fields if present
+        try:
+            cmds.floatFieldGrp(_UI_ELEMENTS['transScale'], e=True, value1=TRANSLATION_SCALE)
+            cmds.floatFieldGrp(_UI_ELEMENTS['rotScale'], e=True, value1=ROTATION_SCALE)
+        except Exception:
+            pass
+        print(f'[MagiCAM] Preset SLOW applied - trans_scale={TRANSLATION_SCALE}, rot_scale={ROTATION_SCALE}')
+    except Exception as e:
+        print('[MagiCAM] Preset error:', e)
+
+
+def _apply_preset_fast():
+    """Fast movement preset - large multiplier for quick motion"""
+    try:
+        global TRANSLATION_SCALE, ROTATION_SCALE
+        TRANSLATION_SCALE = 3.0
+        ROTATION_SCALE = 1.5
+        try:
+            cmds.floatFieldGrp(_UI_ELEMENTS['transScale'], e=True, value1=TRANSLATION_SCALE)
+            cmds.floatFieldGrp(_UI_ELEMENTS['rotScale'], e=True, value1=ROTATION_SCALE)
+        except Exception:
+            pass
+        print(f'[MagiCAM] Preset FAST applied - trans_scale={TRANSLATION_SCALE}, rot_scale={ROTATION_SCALE}')
+    except Exception as e:
+        print('[MagiCAM] Preset error:', e)
+
+
 def apply_test_identity():
     idm = [1.0,0.0,0.0,0.0,
            0.0,1.0,0.0,0.0,
@@ -1013,10 +1147,20 @@ def show_ui():
 
     cmds.separator(height=10)
     cmds.text(label='Presets', font='boldLabelFont')
-    cmds.rowLayout(numberOfColumns=3)
+    cmds.rowLayout(numberOfColumns=5)
     cmds.button(label='Faithful (1:1)', command=lambda *_: _apply_preset_faithful(), bgc=(0.2, 0.6, 0.2))
     cmds.button(label='Smooth', command=lambda *_: _apply_preset_smooth(), bgc=(0.2, 0.4, 0.6))
     cmds.button(label='Predictive', command=lambda *_: _apply_preset_predictive(), bgc=(0.5, 0.3, 0.5))
+    cmds.button(label='Slow', command=lambda *_: _apply_preset_slow(), bgc=(0.6, 0.6, 0.2))
+    cmds.button(label='Fast', command=lambda *_: _apply_preset_fast(), bgc=(0.6, 0.2, 0.2))
+    cmds.setParent('..')
+
+    cmds.separator(height=6)
+    cmds.rowLayout(numberOfColumns=2)
+    cmds.floatFieldGrp(numberOfFields=1, label='Translation Scale', value1=prefs.get('translation_scale', TRANSLATION_SCALE))
+    _UI_ELEMENTS['transScale'] = cmds.floatFieldGrp(numberOfFields=1, label='Translation Scale', value1=prefs.get('translation_scale', TRANSLATION_SCALE))
+    cmds.floatFieldGrp(numberOfFields=1, label='Rotation Scale', value1=prefs.get('rotation_scale', ROTATION_SCALE))
+    _UI_ELEMENTS['rotScale'] = cmds.floatFieldGrp(numberOfFields=1, label='Rotation Scale', value1=prefs.get('rotation_scale', ROTATION_SCALE))
     cmds.setParent('..')
 
     cmds.separator(height=10)
@@ -1052,17 +1196,20 @@ def show_ui():
     cmds.setParent('..')
 
     cmds.separator(height=10)
-    cmds.rowLayout(numberOfColumns=5)
+    cmds.rowLayout(numberOfColumns=7)
     cmds.button(label='Start', command=lambda *_: _ui_start())
     cmds.button(label='Stop', command=lambda *_: _ui_stop())
     cmds.button(label='Calibrate', command=lambda *_: maya_receiver_calibrate())
     cmds.button(label='Reset Calib', command=lambda *_: reset_calibration())
+    cmds.button(label='Start Rec', command=lambda *_: _ui_start_recording(), bgc=(0.2, 0.5, 0.2))
+    cmds.button(label='Stop Rec', command=lambda *_: _ui_stop_recording(), bgc=(0.5, 0.2, 0.2))
     cmds.button(label='Create Shelf', command=lambda *_: create_shelf_button())
     cmds.setParent('..')
 
     cmds.separator(height=10)
-    cmds.rowLayout(numberOfColumns=4)
+    cmds.rowLayout(numberOfColumns=5)
     _UI_ELEMENTS['statusText'] = cmds.text(label='Status: stopped')
+    _UI_ELEMENTS['recStatus'] = cmds.text(label='Record: stopped')
     cmds.button(label='Enable Log', command=lambda *_: _ui_enable_log())
     cmds.button(label='Disable Log', command=lambda *_: disable_logging())
     cmds.button(label='Close', command=lambda *_: close_ui())
@@ -1109,8 +1256,17 @@ def _ui_start():
     # Read flip settings from UI
     flip_yaw = cmds.checkBox(_UI_ELEMENTS['flipYaw'], q=True, value=True)
     flip_pitch = cmds.checkBox(_UI_ELEMENTS['flipPitch'], q=True, value=True)
+    # read scales
+    try:
+        trans_scale = cmds.floatFieldGrp(_UI_ELEMENTS['transScale'], q=True, value1=True)
+    except Exception:
+        trans_scale = TRANSLATION_SCALE
+    try:
+        rot_scale = cmds.floatFieldGrp(_UI_ELEMENTS['rotScale'], q=True, value1=True)
+    except Exception:
+        rot_scale = ROTATION_SCALE
 
-    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, VERBOSE_DEBUG, MAX_ROTATION_DELTA_DEG, FLIP_YAW, FLIP_PITCH
+    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, VERBOSE_DEBUG, MAX_ROTATION_DELTA_DEG, FLIP_YAW, FLIP_PITCH, TRANSLATION_SCALE, ROTATION_SCALE
     SMOOTH_MODE = mode
     SMOOTH_ALPHA = alpha
     TARGET_FPS = fps
@@ -1123,6 +1279,8 @@ def _ui_start():
     MAX_ROTATION_DELTA_DEG = float(max_rot_deg)
     FLIP_YAW = flip_yaw
     FLIP_PITCH = flip_pitch
+    TRANSLATION_SCALE = float(trans_scale)
+    ROTATION_SCALE = float(rot_scale)
     TARGET_FPS = fps
     CAMERA_NAME = cam
     POS_ALPHA = pos_alpha
@@ -1155,6 +1313,22 @@ def _ui_stop():
     _stop_interp_thread()
     try:
         cmds.text(_UI_ELEMENTS['statusText'], e=True, label='Status: stopped')
+    except Exception:
+        pass
+
+
+def _ui_start_recording():
+    start_recording()
+    try:
+        cmds.text(_UI_ELEMENTS['recStatus'], e=True, label='Record: running')
+    except Exception:
+        pass
+
+
+def _ui_stop_recording():
+    stop_recording()
+    try:
+        cmds.text(_UI_ELEMENTS['recStatus'], e=True, label='Record: stopped')
     except Exception:
         pass
 
