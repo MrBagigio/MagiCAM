@@ -6,6 +6,7 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private var session: ARSession = ARSession()
     private var connection: NWConnection?
     @Published var connected: Bool = false
+    @Published var helicopterMode: Bool = false
     var host: String = "192.168.1.100"
     var port: UInt16 = 9000
 
@@ -16,6 +17,10 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private let rotThreshold: Float = 0.001 // more sensitive rotation detection
     private var lastPos: SIMD3<Float>? = nil
     private var lastQuat: simd_quatf? = nil
+    
+    // Joystick state for helicopter mode
+    private var joystickTimer: Timer?
+    private let joystickInterval: TimeInterval = 1.0 / 30.0 // 30 Hz for joystick
     
     // Scale factor: ARKit uses meters, Maya default is cm (multiply by 100)
     // Set to 1.0 if Maya scene is in meters, 100.0 if in centimeters
@@ -139,5 +144,42 @@ class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             let payload: [String: Any] = ["type":"calib", "matrix": arr, "t": Date().timeIntervalSince1970]
             sendPayload(payload)
         }
+    }
+    
+    // MARK: - Helicopter Mode
+    
+    func enableHelicopterMode() {
+        helicopterMode = true
+        // Pause ARKit tracking when in helicopter mode
+        session.pause()
+        // Send command to Maya
+        let payload: [String: Any] = ["type": "cmd", "cmd": "heli_on"]
+        sendPayload(payload)
+    }
+    
+    func disableHelicopterMode() {
+        helicopterMode = false
+        // Resume ARKit tracking
+        let config = ARWorldTrackingConfiguration()
+        config.worldAlignment = .gravity
+        session.run(config)
+        // Send command to Maya
+        let payload: [String: Any] = ["type": "cmd", "cmd": "heli_off"]
+        sendPayload(payload)
+    }
+    
+    func sendJoystickInput(leftX: Float, leftY: Float, rightX: Float, rightY: Float, throttle: Float, roll: Float = 0) {
+        guard helicopterMode else { return }
+        
+        let payload: [String: Any] = [
+            "type": "joystick",
+            "lx": leftX,    // strafe left/right
+            "ly": leftY,    // forward/back
+            "rx": rightX,   // yaw (turn)
+            "ry": rightY,   // pitch (look up/down)
+            "throttle": throttle, // 0.5 = hover
+            "roll": roll
+        ]
+        sendPayload(payload)
     }
 }

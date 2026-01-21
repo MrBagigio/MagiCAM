@@ -190,6 +190,16 @@ RECORD_ADVANCE_FRAME = True
 TRANSLATION_SCALE = 1.0  # multiply incoming translation by this
 ROTATION_SCALE = 1.0     # multiply incoming rotation angle by this (1.0 = 100%)
 
+# Helicopter/Drone mode globals
+HELICOPTER_MODE = False
+HELI_SPEED = 1.0          # movement speed multiplier
+HELI_ROTATION_SPEED = 1.0 # rotation speed multiplier
+HELI_ALTITUDE = 0.0       # current altitude offset
+HELI_YAW = 0.0            # current yaw angle (degrees)
+HELI_PITCH = 0.0          # current pitch angle (degrees)
+HELI_ROLL = 0.0           # current roll angle (degrees)
+HELI_POS = [0.0, 0.0, 0.0] # current position offset [x, y, z]
+
 
 # Preferences
 _PREFS_PATH = os.path.join(os.path.expanduser('~'), '.magicam_prefs.json')
@@ -204,12 +214,14 @@ FLIP_PITCH = True  # Flip X: left/right movement + pitch rotation
 
 def save_prefs(prefs):
     try:
-        # include flip settings and scales
+        # include flip settings, scales, and helicopter settings
         prefs = dict(prefs)
         prefs['flip_yaw'] = FLIP_YAW
         prefs['flip_pitch'] = FLIP_PITCH
         prefs['translation_scale'] = TRANSLATION_SCALE
         prefs['rotation_scale'] = ROTATION_SCALE
+        prefs['heli_speed'] = HELI_SPEED
+        prefs['heli_rot_speed'] = HELI_ROTATION_SPEED
         with open(_PREFS_PATH, 'w') as f:
             json.dump(prefs, f)
         print('Preferences saved')
@@ -223,11 +235,13 @@ def load_prefs():
             with open(_PREFS_PATH, 'r') as f:
                 p = json.load(f)
                 # load flip settings if present
-                global FLIP_YAW, FLIP_PITCH, TRANSLATION_SCALE, ROTATION_SCALE
+                global FLIP_YAW, FLIP_PITCH, TRANSLATION_SCALE, ROTATION_SCALE, HELI_SPEED, HELI_ROTATION_SPEED
                 FLIP_YAW = p.get('flip_yaw', FLIP_YAW)
                 FLIP_PITCH = p.get('flip_pitch', FLIP_PITCH)
                 TRANSLATION_SCALE = p.get('translation_scale', TRANSLATION_SCALE)
                 ROTATION_SCALE = p.get('rotation_scale', ROTATION_SCALE)
+                HELI_SPEED = p.get('heli_speed', HELI_SPEED)
+                HELI_ROTATION_SPEED = p.get('heli_rot_speed', HELI_ROTATION_SPEED)
                 print(f"Prefs loaded: flip_yaw={FLIP_YAW}, flip_pitch={FLIP_PITCH}, trans_scale={TRANSLATION_SCALE}, rot_scale={ROTATION_SCALE}")
                 return p
     except Exception as e:
@@ -640,8 +654,21 @@ def _process_packet(data, from_batch=False):
             cmd = payload.get('cmd')
             if cmd == 'reset_calib':
                 reset_calibration()
+            elif cmd == 'heli_on':
+                _enable_helicopter_mode()
+            elif cmd == 'heli_off':
+                _disable_helicopter_mode()
             else:
                 print('[MagiCAM] Unknown cmd:', cmd)
+        elif msg_type == 'joystick':
+            # Helicopter/drone joystick controls
+            # Expected payload: {type:'joystick', lx, ly, rx, ry, throttle, buttons}
+            # lx/ly = left stick (-1 to 1): strafe left/right, forward/back
+            # rx/ry = right stick (-1 to 1): yaw, pitch
+            # throttle = 0 to 1: altitude
+            # buttons = dict of button states
+            if HELICOPTER_MODE:
+                _process_joystick(payload)
         else:
             print('[MagiCAM] Unknown message type:', msg_type)
     except Exception as e:
@@ -940,6 +967,147 @@ def reset_calibration():
     print('Calibration reset')
 
 
+# ============================================================================
+# HELICOPTER / DRONE MODE
+# ============================================================================
+# Provides virtual joystick controls for flying the camera like a drone.
+# Phone sends joystick input instead of pose data.
+
+def _enable_helicopter_mode():
+    """Enable helicopter/drone flight mode."""
+    global HELICOPTER_MODE, HELI_POS, HELI_YAW, HELI_PITCH, HELI_ROLL, HELI_ALTITUDE
+    HELICOPTER_MODE = True
+    # Initialize from current camera position
+    try:
+        pos = cmds.xform(CAMERA_NAME, q=True, ws=True, translation=True)
+        rot = cmds.xform(CAMERA_NAME, q=True, ws=True, rotation=True)
+        HELI_POS = list(pos)
+        HELI_YAW = rot[1]
+        HELI_PITCH = rot[0]
+        HELI_ROLL = rot[2]
+        HELI_ALTITUDE = pos[1]
+    except Exception:
+        HELI_POS = [0.0, 0.0, 0.0]
+        HELI_YAW = 0.0
+        HELI_PITCH = 0.0
+        HELI_ROLL = 0.0
+        HELI_ALTITUDE = 0.0
+    print('[MagiCAM] Helicopter mode ENABLED')
+
+
+def _disable_helicopter_mode():
+    """Disable helicopter mode, return to normal pose tracking."""
+    global HELICOPTER_MODE
+    HELICOPTER_MODE = False
+    print('[MagiCAM] Helicopter mode DISABLED')
+
+
+def _process_joystick(payload):
+    """Process joystick input for helicopter mode.
+    
+    Expected payload format:
+    {
+        'type': 'joystick',
+        'lx': -1.0 to 1.0,  # left stick X: strafe left/right
+        'ly': -1.0 to 1.0,  # left stick Y: move forward/back
+        'rx': -1.0 to 1.0,  # right stick X: yaw (turn left/right)
+        'ry': -1.0 to 1.0,  # right stick Y: pitch (look up/down)
+        'throttle': 0.0 to 1.0,  # altitude control (up/down)
+        'roll': -1.0 to 1.0,  # optional: roll tilt
+        'buttons': {}  # optional button states
+    }
+    """
+    global HELI_POS, HELI_YAW, HELI_PITCH, HELI_ROLL, HELI_ALTITUDE
+    
+    try:
+        lx = float(payload.get('lx', 0.0))  # strafe
+        ly = float(payload.get('ly', 0.0))  # forward/back
+        rx = float(payload.get('rx', 0.0))  # yaw
+        ry = float(payload.get('ry', 0.0))  # pitch
+        throttle = float(payload.get('throttle', 0.5))  # altitude (0.5 = hover)
+        roll_input = float(payload.get('roll', 0.0))
+        
+        # Dead zone
+        dead_zone = 0.1
+        if abs(lx) < dead_zone: lx = 0.0
+        if abs(ly) < dead_zone: ly = 0.0
+        if abs(rx) < dead_zone: rx = 0.0
+        if abs(ry) < dead_zone: ry = 0.0
+        
+        # Apply rotation speeds
+        yaw_speed = 2.0 * HELI_ROTATION_SPEED
+        pitch_speed = 1.5 * HELI_ROTATION_SPEED
+        roll_speed = 1.0 * HELI_ROTATION_SPEED
+        
+        HELI_YAW += rx * yaw_speed
+        HELI_PITCH = max(-89.0, min(89.0, HELI_PITCH - ry * pitch_speed))
+        HELI_ROLL = roll_input * 30.0 * roll_speed  # max 30 degree roll
+        
+        # Movement in camera-local space
+        move_speed = HELI_SPEED * 0.5  # units per update
+        
+        # Convert yaw to radians for movement calculation
+        yaw_rad = math.radians(HELI_YAW)
+        
+        # Forward/back (ly) and strafe (lx) in world space
+        # Forward is -Z in Maya when yaw=0
+        forward_x = -math.sin(yaw_rad) * ly * move_speed
+        forward_z = -math.cos(yaw_rad) * ly * move_speed
+        strafe_x = math.cos(yaw_rad) * lx * move_speed
+        strafe_z = -math.sin(yaw_rad) * lx * move_speed
+        
+        HELI_POS[0] += forward_x + strafe_x
+        HELI_POS[2] += forward_z + strafe_z
+        
+        # Altitude control: throttle 0.5 = hover, <0.5 = descend, >0.5 = ascend
+        altitude_speed = 0.3 * HELI_SPEED
+        HELI_POS[1] += (throttle - 0.5) * 2.0 * altitude_speed
+        
+        # Apply to camera
+        def _apply_heli():
+            try:
+                if not cmds.objExists(CAMERA_NAME):
+                    return
+                cmds.xform(CAMERA_NAME, ws=True, translation=HELI_POS)
+                cmds.xform(CAMERA_NAME, ws=True, rotation=[HELI_PITCH, HELI_YAW, HELI_ROLL])
+                
+                # Record keyframe if recording is enabled
+                if RECORDING:
+                    cur = cmds.currentTime(q=True)
+                    cmds.setKeyframe(CAMERA_NAME, at=['translate', 'rotate'], t=cur)
+                    if RECORD_ADVANCE_FRAME:
+                        cmds.currentTime(cur + 1, edit=True)
+            except Exception as e:
+                print(f'[MagiCAM Heli] Apply error: {e}')
+        
+        cmds.evalDeferred(_apply_heli)
+        
+    except Exception as e:
+        print(f'[MagiCAM Heli] Joystick error: {e}')
+
+
+def set_helicopter_speed(speed: float):
+    """Set helicopter movement speed multiplier."""
+    global HELI_SPEED
+    HELI_SPEED = max(0.1, float(speed))
+    print(f'[MagiCAM] Helicopter speed set to {HELI_SPEED}')
+
+
+def set_helicopter_rotation_speed(speed: float):
+    """Set helicopter rotation speed multiplier."""
+    global HELI_ROTATION_SPEED
+    HELI_ROTATION_SPEED = max(0.1, float(speed))
+    print(f'[MagiCAM] Helicopter rotation speed set to {HELI_ROTATION_SPEED}')
+
+
+def is_helicopter_mode():
+    """Check if helicopter mode is active."""
+    return HELICOPTER_MODE
+
+
+# ============================================================================
+
+
 # Optional helper: apply identity to camera to test
 def _log(msg):
     """Append a timestamped message to the log file if enabled."""
@@ -1157,9 +1325,7 @@ def show_ui():
 
     cmds.separator(height=6)
     cmds.rowLayout(numberOfColumns=2)
-    cmds.floatFieldGrp(numberOfFields=1, label='Translation Scale', value1=prefs.get('translation_scale', TRANSLATION_SCALE))
     _UI_ELEMENTS['transScale'] = cmds.floatFieldGrp(numberOfFields=1, label='Translation Scale', value1=prefs.get('translation_scale', TRANSLATION_SCALE))
-    cmds.floatFieldGrp(numberOfFields=1, label='Rotation Scale', value1=prefs.get('rotation_scale', ROTATION_SCALE))
     _UI_ELEMENTS['rotScale'] = cmds.floatFieldGrp(numberOfFields=1, label='Rotation Scale', value1=prefs.get('rotation_scale', ROTATION_SCALE))
     cmds.setParent('..')
 
@@ -1194,6 +1360,16 @@ def show_ui():
     _UI_ELEMENTS['flipYaw'] = cmds.checkBox(label='Flip Z (forward/back + yaw)', value=FLIP_YAW, changeCommand=lambda v: set_flip_yaw(v))
     _UI_ELEMENTS['flipPitch'] = cmds.checkBox(label='Flip X (left/right + pitch)', value=FLIP_PITCH, changeCommand=lambda v: set_flip_pitch(v))
     cmds.setParent('..')
+
+    cmds.separator(height=10)
+    cmds.text(label='Helicopter/Drone Mode', font='boldLabelFont')
+    cmds.rowLayout(numberOfColumns=4)
+    cmds.button(label='Enable Heli', command=lambda *_: _ui_enable_heli(), bgc=(0.2, 0.4, 0.6))
+    cmds.button(label='Disable Heli', command=lambda *_: _ui_disable_heli(), bgc=(0.5, 0.3, 0.3))
+    _UI_ELEMENTS['heliSpeed'] = cmds.floatFieldGrp(numberOfFields=1, label='Speed', value1=prefs.get('heli_speed', HELI_SPEED))
+    _UI_ELEMENTS['heliRotSpeed'] = cmds.floatFieldGrp(numberOfFields=1, label='Rot Speed', value1=prefs.get('heli_rot_speed', HELI_ROTATION_SPEED))
+    cmds.setParent('..')
+    _UI_ELEMENTS['heliStatus'] = cmds.text(label='Heli: OFF')
 
     cmds.separator(height=10)
     cmds.rowLayout(numberOfColumns=7)
@@ -1239,6 +1415,7 @@ def close_ui():
 
 
 def _ui_start():
+    global TRANSLATION_SCALE, ROTATION_SCALE
     port = cmds.intFieldGrp(_UI_ELEMENTS['portField'], q=True, value1=True)
     cam = cmds.textFieldGrp(_UI_ELEMENTS['cameraField'], q=True, text=True)
     mode = cmds.optionMenuGrp(_UI_ELEMENTS['modeMenu'], q=True, value=True)
@@ -1266,7 +1443,7 @@ def _ui_start():
     except Exception:
         rot_scale = ROTATION_SCALE
 
-    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, VERBOSE_DEBUG, MAX_ROTATION_DELTA_DEG, FLIP_YAW, FLIP_PITCH, TRANSLATION_SCALE, ROTATION_SCALE
+    global SMOOTH_MODE, SMOOTH_ALPHA, TARGET_FPS, CAMERA_NAME, POS_ALPHA, ROT_ALPHA, MIN_UPDATE_INTERVAL, MAX_BATCH_READ, VERBOSE_DEBUG, MAX_ROTATION_DELTA_DEG, FLIP_YAW, FLIP_PITCH
     SMOOTH_MODE = mode
     SMOOTH_ALPHA = alpha
     TARGET_FPS = fps
@@ -1281,14 +1458,6 @@ def _ui_start():
     FLIP_PITCH = flip_pitch
     TRANSLATION_SCALE = float(trans_scale)
     ROTATION_SCALE = float(rot_scale)
-    TARGET_FPS = fps
-    CAMERA_NAME = cam
-    POS_ALPHA = pos_alpha
-    ROT_ALPHA = rot_alpha
-    MIN_UPDATE_INTERVAL = max(1e-4, min_interval)
-    MAX_BATCH_READ = max(1, max_batch)
-    VERBOSE_DEBUG = bool(verbose)
-    MAX_ROTATION_DELTA_DEG = float(max_rot_deg)
 
     # reset filters if using predictive mode
     if SMOOTH_MODE in ('alpha_beta', 'kalman'):
@@ -1329,6 +1498,30 @@ def _ui_stop_recording():
     stop_recording()
     try:
         cmds.text(_UI_ELEMENTS['recStatus'], e=True, label='Record: stopped')
+    except Exception:
+        pass
+
+
+def _ui_enable_heli():
+    """Enable helicopter mode from UI."""
+    global HELI_SPEED, HELI_ROTATION_SPEED
+    try:
+        HELI_SPEED = cmds.floatFieldGrp(_UI_ELEMENTS['heliSpeed'], q=True, value1=True)
+        HELI_ROTATION_SPEED = cmds.floatFieldGrp(_UI_ELEMENTS['heliRotSpeed'], q=True, value1=True)
+    except Exception:
+        pass
+    _enable_helicopter_mode()
+    try:
+        cmds.text(_UI_ELEMENTS['heliStatus'], e=True, label='Heli: ON')
+    except Exception:
+        pass
+
+
+def _ui_disable_heli():
+    """Disable helicopter mode from UI."""
+    _disable_helicopter_mode()
+    try:
+        cmds.text(_UI_ELEMENTS['heliStatus'], e=True, label='Heli: OFF')
     except Exception:
         pass
 

@@ -18,12 +18,20 @@ struct ContentView: View {
     @State var showViewport = false
     @State var frameCount: Int = 0
     
+    // Helicopter mode state
+    @State var helicopterMode = false
+    @State var leftStickPos: CGPoint = .zero
+    @State var rightStickPos: CGPoint = .zero
+    @State var throttleValue: Float = 0.5
+    
     // Environment to detect orientation
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass
     
     // Timer for updating frame count
     let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+    // Timer for sending joystick input
+    let joystickTimer = Timer.publish(every: 1.0/30.0, on: .main, in: .common).autoconnect()
     
     var isLandscape: Bool {
         verticalSizeClass == .compact
@@ -62,6 +70,20 @@ struct ContentView: View {
                 frameCount += 1
             }
         }
+        .onReceive(joystickTimer) { _ in
+            if helicopterMode && isRunning {
+                sendJoystickInput()
+            }
+        }
+    }
+    
+    // Send joystick values to Maya
+    func sendJoystickInput() {
+        let lx = Float(leftStickPos.x / 50.0)  // normalize to -1..1
+        let ly = Float(-leftStickPos.y / 50.0) // invert Y
+        let rx = Float(rightStickPos.x / 50.0)
+        let ry = Float(-rightStickPos.y / 50.0)
+        manager.sendJoystickInput(leftX: lx, leftY: ly, rightX: rx, rightY: ry, throttle: throttleValue)
     }
     
     // MARK: - Portrait Layout
@@ -73,31 +95,51 @@ struct ContentView: View {
                 
                 Spacer().frame(height: 20)
                 
-                // Main content
-                VStack(spacing: 24) {
-                    // Status indicator
-                    statusView(compact: false)
-                    
-                    // Connection fields
-                    connectionFieldsView(compact: false)
-                    
-                    // Control buttons
-                    controlButtonsView(compact: false)
-                    
-                    // Viewport stream button
-                    viewportButtonView
-                    
-                    // Stats
-                    if isRunning {
-                        statsView(compact: false)
-                    }
+                // Mode toggle (Camera vs Helicopter)
+                if isRunning {
+                    modeToggleView(compact: false)
+                    Spacer().frame(height: 16)
                 }
-                .padding(.horizontal, 30)
                 
-                Spacer().frame(height: 20)
-                
-                // Footer info
-                footerView
+                // Show joystick overlay when in helicopter mode
+                if helicopterMode && isRunning {
+                    helicopterControlsView(geometry: geometry)
+                        .padding(.horizontal, 20)
+                    
+                    Spacer().frame(height: 20)
+                    
+                    // Footer info
+                    footerView
+                } else {
+                    // Normal camera mode content
+                    Spacer().frame(height: 20)
+                    
+                    // Main content
+                    VStack(spacing: 24) {
+                        // Status indicator
+                        statusView(compact: false)
+                        
+                        // Connection fields
+                        connectionFieldsView(compact: false)
+                        
+                        // Control buttons
+                        controlButtonsView(compact: false)
+                        
+                        // Viewport stream button
+                        viewportButtonView
+                        
+                        // Stats
+                        if isRunning {
+                            statsView(compact: false)
+                        }
+                    }
+                    .padding(.horizontal, 30)
+                    
+                    Spacer().frame(height: 20)
+                    
+                    // Footer info
+                    footerView
+                }
             }
             .frame(minHeight: geometry.size.height)
         }
@@ -105,42 +147,65 @@ struct ContentView: View {
     
     // MARK: - Landscape Layout
     func landscapeLayout(geometry: GeometryProxy) -> some View {
-        HStack(spacing: 0) {
-            // Left side - Status and controls
-            VStack(spacing: 12) {
-                headerView(compact: true)
+        // In helicopter mode, show joystick fullscreen
+        if helicopterMode && isRunning {
+            ZStack {
+                // Joystick controls
+                helicopterControlsLandscape(geometry: geometry)
                 
-                statusView(compact: true)
-                
-                controlButtonsView(compact: true)
-                
-                if isRunning {
-                    statsView(compact: true)
+                // Mode toggle in corner
+                VStack {
+                    HStack {
+                        modeToggleView(compact: true)
+                            .padding(16)
+                        Spacer()
+                    }
+                    Spacer()
                 }
             }
-            .frame(width: geometry.size.width * 0.45)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            
-            // Divider
-            Rectangle()
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 1)
-                .padding(.vertical, 20)
-            
-            // Right side - Connection fields and viewport
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 16) {
-                    connectionFieldsView(compact: true)
+        } else {
+            // Normal layout
+            HStack(spacing: 0) {
+                // Left side - Status and controls
+                VStack(spacing: 12) {
+                    headerView(compact: true)
                     
-                    viewportButtonView
+                    if isRunning {
+                        modeToggleView(compact: true)
+                    }
                     
-                    footerView
+                    statusView(compact: true)
+                    
+                    controlButtonsView(compact: true)
+                    
+                    if isRunning {
+                        statsView(compact: true)
+                    }
                 }
+                .frame(width: geometry.size.width * 0.45)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
+                
+                // Divider
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(width: 1)
+                    .padding(.vertical, 20)
+                
+                // Right side - Connection fields and viewport
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        connectionFieldsView(compact: true)
+                        
+                        viewportButtonView
+                        
+                        footerView
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                }
+                .frame(width: geometry.size.width * 0.55 - 1)
             }
-            .frame(width: geometry.size.width * 0.55 - 1)
         }
     }
     
@@ -513,6 +578,224 @@ struct ContentView: View {
             .padding(.vertical, isLandscape ? 6 : 12)
         }
     }
+    
+    // MARK: - Mode Toggle View
+    func modeToggleView(compact: Bool) -> some View {
+        HStack(spacing: compact ? 8 : 12) {
+            // Camera mode button
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    helicopterMode = false
+                    manager.disableHelicopterMode()
+                }
+                let feedback = UIImpactFeedbackGenerator(style: .medium)
+                feedback.impactOccurred()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: compact ? 12 : 16))
+                    Text("CAMERA")
+                        .font(.system(size: compact ? 10 : 12, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(helicopterMode ? .gray : .white)
+                .padding(.horizontal, compact ? 12 : 16)
+                .padding(.vertical, compact ? 8 : 10)
+                .background(
+                    RoundedRectangle(cornerRadius: compact ? 8 : 10)
+                        .fill(helicopterMode ? Color.white.opacity(0.1) : Color.green)
+                )
+            }
+            
+            // Helicopter mode button
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    helicopterMode = true
+                    manager.enableHelicopterMode()
+                    // Reset joysticks
+                    leftStickPos = .zero
+                    rightStickPos = .zero
+                    throttleValue = 0.5
+                }
+                let feedback = UIImpactFeedbackGenerator(style: .medium)
+                feedback.impactOccurred()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "airplane")
+                        .font(.system(size: compact ? 12 : 16))
+                    Text("DRONE")
+                        .font(.system(size: compact ? 10 : 12, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(helicopterMode ? .white : .gray)
+                .padding(.horizontal, compact ? 12 : 16)
+                .padding(.vertical, compact ? 8 : 10)
+                .background(
+                    RoundedRectangle(cornerRadius: compact ? 8 : 10)
+                        .fill(helicopterMode ? Color.cyanCompat : Color.white.opacity(0.1))
+                )
+            }
+        }
+        .padding(compact ? 6 : 8)
+        .background(
+            RoundedRectangle(cornerRadius: compact ? 12 : 16)
+                .fill(Color.black.opacity(0.3))
+                .overlay(
+                    RoundedRectangle(cornerRadius: compact ? 12 : 16)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+        )
+    }
+    
+    // MARK: - Helicopter Controls (Portrait)
+    func helicopterControlsView(geometry: GeometryProxy) -> some View {
+        VStack(spacing: 20) {
+            // Status
+            HStack {
+                Circle()
+                    .fill(Color.cyanCompat)
+                    .frame(width: 10, height: 10)
+                Text("DRONE MODE ACTIVE")
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color.cyanCompat)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.4))
+            .cornerRadius(8)
+            
+            // Joysticks side by side
+            HStack(spacing: 40) {
+                // Left stick - Movement (strafe + forward/back)
+                VStack(spacing: 8) {
+                    JoystickView(position: $leftStickPos, label: "MOVE")
+                    Text("L/R + F/B")
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
+                }
+                
+                // Right stick - Rotation (yaw + pitch)
+                VStack(spacing: 8) {
+                    JoystickView(position: $rightStickPos, label: "LOOK")
+                    Text("YAW + PITCH")
+                        .font(.system(size: 10))
+                        .foregroundColor(.gray)
+                }
+            }
+            
+            // Throttle slider
+            VStack(spacing: 8) {
+                Text("ALTITUDE")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+                
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.down")
+                        .foregroundColor(.red)
+                    
+                    Slider(value: $throttleValue, in: 0...1)
+                        .accentColor(Color.cyanCompat)
+                        .frame(width: 200)
+                    
+                    Image(systemName: "arrow.up")
+                        .foregroundColor(.green)
+                }
+                
+                Text(throttleValue > 0.55 ? "ASCENDING" : (throttleValue < 0.45 ? "DESCENDING" : "HOVER"))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(throttleValue > 0.55 ? .green : (throttleValue < 0.45 ? .red : .gray))
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white.opacity(0.05))
+            )
+        }
+    }
+    
+    // MARK: - Helicopter Controls (Landscape - fullscreen joysticks)
+    func helicopterControlsLandscape(geometry: GeometryProxy) -> some View {
+        HStack {
+            // Left joystick area
+            VStack {
+                Spacer()
+                JoystickView(position: $leftStickPos, label: "MOVE", size: 140)
+                Text("STRAFE + FWD/BACK")
+                    .font(.system(size: 10))
+                    .foregroundColor(.gray)
+                Spacer().frame(height: 30)
+            }
+            .frame(width: geometry.size.width * 0.35)
+            
+            // Center - throttle and status
+            VStack(spacing: 16) {
+                // Status
+                HStack {
+                    Circle()
+                        .fill(Color.cyanCompat)
+                        .frame(width: 8, height: 8)
+                    Text("DRONE")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color.cyanCompat)
+                }
+                
+                Spacer()
+                
+                // Vertical throttle
+                VStack(spacing: 4) {
+                    Image(systemName: "arrow.up")
+                        .foregroundColor(.green)
+                        .font(.system(size: 14))
+                    
+                    // Vertical slider
+                    GeometryReader { g in
+                        ZStack(alignment: .bottom) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white.opacity(0.1))
+                            
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(
+                                    LinearGradient(
+                                        gradient: Gradient(colors: [.red, .yellow, .green]),
+                                        startPoint: .bottom,
+                                        endPoint: .top
+                                    )
+                                )
+                                .frame(height: g.size.height * CGFloat(throttleValue))
+                        }
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    let newVal = 1.0 - (value.location.y / g.size.height)
+                                    throttleValue = Float(max(0, min(1, newVal)))
+                                }
+                        )
+                    }
+                    .frame(width: 30, height: 100)
+                    
+                    Image(systemName: "arrow.down")
+                        .foregroundColor(.red)
+                        .font(.system(size: 14))
+                    
+                    Text(throttleValue > 0.55 ? "UP" : (throttleValue < 0.45 ? "DOWN" : "HOVER"))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(throttleValue > 0.55 ? .green : (throttleValue < 0.45 ? .red : .gray))
+                }
+                
+                Spacer()
+            }
+            .frame(width: geometry.size.width * 0.3)
+            
+            // Right joystick area
+            VStack {
+                Spacer()
+                JoystickView(position: $rightStickPos, label: "LOOK", size: 140)
+                Text("YAW + PITCH")
+                    .font(.system(size: 10))
+                    .foregroundColor(.gray)
+                Spacer().frame(height: 30)
+            }
+            .frame(width: geometry.size.width * 0.35)
+        }
+    }
 }
 
 // MARK: - Stat Box Component
@@ -547,6 +830,105 @@ struct StatBox: View {
                     RoundedRectangle(cornerRadius: compact ? 8 : 12)
                         .stroke(color.opacity(0.2), lineWidth: 1)
                 )
+        )
+    }
+}
+
+// MARK: - Joystick Component
+struct JoystickView: View {
+    @Binding var position: CGPoint
+    var label: String = ""
+    var size: CGFloat = 120
+    
+    @State private var isDragging = false
+    
+    var body: some View {
+        let knobSize: CGFloat = size * 0.4
+        let maxDistance = (size - knobSize) / 2.0
+        
+        ZStack {
+            // Outer ring
+            Circle()
+                .stroke(Color.white.opacity(0.2), lineWidth: 2)
+                .frame(width: size, height: size)
+            
+            // Background
+            Circle()
+                .fill(
+                    RadialGradient(
+                        gradient: Gradient(colors: [Color.white.opacity(0.1), Color.clear]),
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: size / 2
+                    )
+                )
+                .frame(width: size, height: size)
+            
+            // Cross guides
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .frame(width: 1, height: size * 0.6)
+            Rectangle()
+                .fill(Color.white.opacity(0.1))
+                .frame(width: size * 0.6, height: 1)
+            
+            // Knob
+            Circle()
+                .fill(
+                    LinearGradient(
+                        gradient: Gradient(colors: [Color.cyanCompat, Color.cyanCompat.opacity(0.6)]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: knobSize, height: knobSize)
+                .shadow(color: Color.cyanCompat.opacity(0.5), radius: isDragging ? 10 : 5)
+                .offset(x: position.x, y: position.y)
+            
+            // Label
+            if !label.isEmpty {
+                Text(label)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.5))
+                    .offset(y: size / 2 + 12)
+            }
+        }
+        .frame(width: size, height: size)
+        .contentShape(Circle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    isDragging = true
+                    // Calculate offset from center
+                    let center = CGPoint(x: size / 2, y: size / 2)
+                    var offset = CGPoint(
+                        x: value.location.x - center.x,
+                        y: value.location.y - center.y
+                    )
+                    
+                    // Clamp to max distance (circular constraint)
+                    let distance = sqrt(offset.x * offset.x + offset.y * offset.y)
+                    if distance > maxDistance {
+                        let scale = maxDistance / distance
+                        offset.x *= scale
+                        offset.y *= scale
+                    }
+                    
+                    position = offset
+                    
+                    // Haptic feedback at extremes
+                    if distance > maxDistance * 0.9 {
+                        let feedback = UIImpactFeedbackGenerator(style: .light)
+                        feedback.impactOccurred()
+                    }
+                }
+                .onEnded { _ in
+                    isDragging = false
+                    // Spring back to center
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        position = .zero
+                    }
+                }
         )
     }
 }
