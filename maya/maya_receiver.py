@@ -185,8 +185,17 @@ _UI_ELEMENTS = {}
 # Preferences
 _PREFS_PATH = os.path.join(os.path.expanduser('~'), '.magicam_prefs.json')
 
+# Coordinate flip options (control yaw/pitch inversion)
+FLIP_YAW = True   # inverts Z axis reflection to match ARKit->Maya yaw direction
+FLIP_PITCH = True # inverts Y axis reflection to match ARKit->Maya pitch direction
+
+
 def save_prefs(prefs):
     try:
+        # include flip settings
+        prefs = dict(prefs)
+        prefs['flip_yaw'] = FLIP_YAW
+        prefs['flip_pitch'] = FLIP_PITCH
         with open(_PREFS_PATH, 'w') as f:
             json.dump(prefs, f)
         print('Preferences saved')
@@ -198,7 +207,13 @@ def load_prefs():
     try:
         if os.path.exists(_PREFS_PATH):
             with open(_PREFS_PATH, 'r') as f:
-                return json.load(f)
+                p = json.load(f)
+                # load flip settings if present
+                global FLIP_YAW, FLIP_PITCH
+                FLIP_YAW = p.get('flip_yaw', FLIP_YAW)
+                FLIP_PITCH = p.get('flip_pitch', FLIP_PITCH)
+                print(f"Prefs loaded: flip_yaw={FLIP_YAW}, flip_pitch={FLIP_PITCH}")
+                return p
     except Exception as e:
         print('Failed to load prefs:', e)
     return {}
@@ -262,24 +277,22 @@ def _validate_matrix(m):
 def _arkit_to_maya_matrix(mat_list):
     """Convert ARKit row-major matrix to Maya coordinate system.
     ARKit: Right-handed, Y-up, -Z forward
-    Maya: Right-handed, Y-up, Z forward (or configurable)
+    Maya: Right-handed, Y-up, Z forward
 
-    Observed behavior: yaw is inverted (rotating phone right produces camera rotating
-    left). This is caused by a handedness/sign difference for the Z axis. To fix we
-    apply a similarity transform S * M * S where S = diag(1, 1, -1, 1). This flips the
-    Z axis and effectively inverts yaw without changing handedness unexpectedly.
-
-    The function accepts a row-major 4x4 list and returns a corrected row-major list.
+    Applies optional axis reflections based on FLIP_YAW and FLIP_PITCH flags.
+    Reflection matrix R = diag(1, r11, r22, 1) where r11 = -1 if FLIP_PITCH else 1
+    and r22 = -1 if FLIP_YAW else 1. The output is R * M * R.
     """
     try:
-        # Build MMatrix from incoming list (row-major)
         mm_in = _rowlist_to_mmatrix(mat_list)
-        # Reflection matrix S = diag(1,1,-1,1)
-        S = om.MMatrix([1.0, 0.0, 0.0, 0.0,
-                        0.0, 1.0, 0.0, 0.0,
-                        0.0, 0.0, -1.0, 0.0,
+        r00 = 1.0
+        r11 = -1.0 if FLIP_PITCH else 1.0
+        r22 = -1.0 if FLIP_YAW else 1.0
+        R = om.MMatrix([r00, 0.0, 0.0, 0.0,
+                        0.0, r11, 0.0, 0.0,
+                        0.0, 0.0, r22, 0.0,
                         0.0, 0.0, 0.0, 1.0])
-        mm_out = S * mm_in * S
+        mm_out = R * mm_in * R
         return list(mm_out)
     except Exception as e:
         print('Matrix conversion error:', e)
@@ -846,6 +859,20 @@ def _log(msg):
             f.write(f"{time.time()},{msg}\n")
     except Exception:
         pass
+
+# Runtime setters for flips
+def set_flip_yaw(v: bool):
+    global FLIP_YAW
+    FLIP_YAW = bool(v)
+    print(f"FLIP_YAW set to {FLIP_YAW}")
+
+def set_flip_pitch(v: bool):
+    global FLIP_PITCH
+    FLIP_PITCH = bool(v)
+    print(f"FLIP_PITCH set to {FLIP_PITCH}")
+
+def get_flip_status():
+    return {'flip_yaw': FLIP_YAW, 'flip_pitch': FLIP_PITCH}
 
 
 def enable_logging(path):
