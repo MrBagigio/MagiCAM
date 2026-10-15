@@ -343,7 +343,7 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
 - [x] F1.9 **Prima misura dal vivo in Maya col simulatore**: latenza simulatore→camera (timestamp nel pacchetto vs *(misurato 2026-10-15: latenza p50 8,7 ms, p95 16,4; One Euro tarato beta 10 con tests/test_filter_tuning.py; conferma su iPhone in F2.6)*
       `xform -q` sul tick), jitter, Hz effettivi; taratura del One Euro su una traiettoria registrata (si scrive PRIMA
       l'atteso: quanto ritardo si accetta, p.es. ≤ 2 frame a 60 Hz). → `docs/MISURE.md`.
-- [ ] F1.10 UI PySide6: stato (ricevo/persi/latenza/tracking), Calibra, Recenter, Freeze, scala, blocchi, camera, *(scritto, non ancora aperto in Maya: la UI non e' nel banco MCP)*
+- [x] F1.10 UI PySide6: stato (ricevo/persi/latenza/tracking), Calibra, Recenter, Freeze, scala, blocchi, camera, *(aperto in Maya 2026 il 2026-10-15: Calibra, Freeze/Rilascia, scala, Rec provati col simulatore e misurati dentro Maya: docs/MISURE.md)*
       Rec. La UI legge uno stato, non scrive globali. **Prova**: ogni pulsante ha un test che chiama la stessa funzione
       della UI e verifica lo stato (il pulsante NON e' il test: la funzione lo e').
 - [ ] F1.11 Preferenze: un solo file, un solo scrittore, scrittura atomica (tmp + rename), tutte le chiavi.
@@ -375,7 +375,7 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
       → 240 chiavi esatte, durata 10,00 s (contrasto: il vecchio codice darebbe 600 chiavi = 25 s); con il 10% dei
       pacchetti persi → ancora 240 chiavi, nessun buco; take in cui l'operatore sta fermo 3 s → la camera sta ferma 3 s.
 - [x] F3.3 Lista take, ricuoci su un'altra camera, elimina (sposta in `_cestino/`, regola 8). *(libreria e cestino fatti; ricuoci su altra camera = `bake_take(take, camera)`, non provato in Maya; lista nella UI da fare)*
-- [ ] F3.4 Prova dal vivo: una take di 20 s con l'iPhone, playblast, confronto a occhio col video del telefono (B3).
+- [ ] F3.4 Prova dal vivo: una take di 20 s con l'iPhone, playblast, confronto a occhio col video del telefono (B3). *(col simulatore fatto 2026-10-15: 20,5 s → 492 chiavi dal pannello; con l'iPhone resta da fare)*
 
 ### F4 — Robustezza e rete
 

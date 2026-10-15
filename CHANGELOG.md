@@ -5,6 +5,13 @@ Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' s
 
 ### v2 — Bake in blocco misurato, undo pulito, il «Maya inchiodato» che non lo era — 2026-10-15
 
+**Pannello in Maya (F1.10), stesso giorno.** Aperto nel Maya dell'utente su una camera nuova, simulatore a 60 Hz:
+Calibra → cerchio Ø 99,2 cm; Freeze → 0 movimento con 229 pose in arrivo; Rilascia → prima posa a 1,5 cm dalla
+congelata (un passo); scala 0,1 → Ø 10,08 cm, primo passo 0,131 cm; Rec 20,5 s → 492/492 chiavi. La prima misura dei
+«salti» (11,7 e 56 cm) era lo strumento (campioni dal PC in ritardo): rifatta dentro Maya posa per posa. Il gateway
+dcc-mcp ha perso di nuovo l'istanza: `tests_maya/mcp_gateway.py` ora parla direttamente col server MCP dentro Maya
+quando il gateway tace.
+
 **Cosa.** `bake_take` scrive le curve con `MFnAnimCurve.addKeys` (canali da `takes.channel_curves`, Euler XYZ continui
 scegliendo la terna piu' vicina alla precedente); le pose dal vivo non entrano nella coda di undo
 (`undoInfo(stateWithoutFlush=False)` attorno a xform/setAttr, `live_undo=True` solo per il contrasto); banchi con
