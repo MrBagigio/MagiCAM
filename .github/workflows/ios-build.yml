@@ -28,8 +28,10 @@ jobs:
           brew install xcodegen
           cd ios && xcodegen generate
       - name: Build non firmata (generic iOS device)
+        # pipefail: senza, `xcodebuild | tee` faceva passare uno step con la build FALLITA (2026-10-15: run verde,
+        # .ipa di 1,6 KB col solo Info.plist). Un verde senza l'eseguibile dentro e' un verde finto.
         run: |
-          set -e
+          set -eo pipefail
           cd ios
           xcodebuild -project MagiCAM.xcodeproj -scheme MagiCAM -configuration Release \
             -destination 'generic/platform=iOS' -derivedDataPath build \
@@ -40,6 +42,8 @@ jobs:
           set -e
           APP=$(find ios/build/Build/Products -name 'MagiCAM.app' -type d | head -1)
           test -n "$APP"
+          test -f "$APP/MagiCAM" || { echo "manca l'eseguibile dentro MagiCAM.app: build non riuscita"; exit 1; }
+          ls -la "$APP"
           mkdir -p Payload && cp -R "$APP" Payload/
           zip -qr MagiCAM-unsigned.ipa Payload
           ls -la MagiCAM-unsigned.ipa

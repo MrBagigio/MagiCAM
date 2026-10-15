@@ -195,7 +195,7 @@ private extension Binding where Value == Double {
     /// Slider in log10: il valore salvato resta lineare (la scala vera), il cursore si muove in decadi.
     var logarithmic: Binding<Double> {
         Binding<Double>(
-            get: { log10(max(self.wrappedValue, 1e-6)) },
+            get: { log10(Swift.max(self.wrappedValue, 1e-6)) },  // `max` nudo = membro dinamico del Binding
             set: { self.wrappedValue = pow(10.0, $0) }
         )
     }
