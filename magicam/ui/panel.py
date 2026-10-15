@@ -63,6 +63,21 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         self.port_spin.setValue(port)
         form.addRow("Camera", self.camera_edit)
         form.addRow("Porta UDP", self.port_spin)
+        pair = QtWidgets.QHBoxLayout()
+        self.pair_chk = QtWidgets.QCheckBox("Richiedi codice")
+        self.pair_chk.setChecked(True)
+        self.pair_chk.toggled.connect(self._apply_pairing)
+        pair.addWidget(self.pair_chk)
+        self.token_label = QtWidgets.QLabel("")
+        self.token_label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        pair.addWidget(self.token_label)
+        self.token_btn = QtWidgets.QPushButton("Nuovo codice")
+        self.token_btn.clicked.connect(self._new_token)
+        pair.addWidget(self.token_btn)
+        pair.addStretch(1)
+        form.addRow("Telefono", pair)
+        self._token = MayaCameraBridge.new_token()
+        self._apply_pairing(True)
         lay.addLayout(form)
 
         row = QtWidgets.QHBoxLayout()
@@ -155,6 +170,14 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
     def _set_scale(self, v: float) -> None:
         self.session.set_scale(float(v))
 
+    def _new_token(self) -> None:
+        self._token = MayaCameraBridge.new_token()
+        self._apply_pairing(self.pair_chk.isChecked())
+
+    def _apply_pairing(self, on: bool) -> None:
+        self.bridge.require_token(self._token if on else None)
+        self.token_label.setText(f"codice {self._token}" if on else "aperto a tutta la LAN")
+
     def _toggle_rec(self) -> None:
         if self.bridge.recorder.recording:
             try:
@@ -182,9 +205,17 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         rec = self.bridge.recorder
         self.rec_btn.setText(f"Stop ({rec.sample_count})" if rec.recording else "Rec")
         running = "in ascolto" if self.receiver.running else "fermo"
+        if self.receiver.running and self.bridge.link_lost:
+            silence = st.silence_s(__import__("time").monotonic()) or 0.0
+            running = f"COLLEGAMENTO PERSO da {silence:.1f} s"
+        bonjour = (
+            "Bonjour on" if self.bridge.advertiser is not None and self.bridge.advertiser.running else "Bonjour off"
+        )
+        running = f"{running} · {bonjour}"
         self.status.setText(
             f"{running} · {s.hold.value} · ricevute {st.received} · perse {st.lost} · riordinate {st.reordered} · "
-            f"rifiutate {st.rejected} · latenza {st.latency_ms:.0f} ms · applicate {ts.applied_hz:.0f} Hz · "
+            f"rifiutate {st.rejected} · non abbinate {st.unpaired} · ri-ancoraggi {s.reanchors} · "
+            f"latenza {st.latency_ms:.0f} ms · applicate {ts.applied_hz:.0f} Hz · "
             f"tick {ts.last_cost_ms:.2f} ms (max {ts.max_cost_ms:.2f})"
         )
 

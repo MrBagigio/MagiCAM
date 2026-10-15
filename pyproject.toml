@@ -11,7 +11,8 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "numpy>=1.24", "pre-commit>=3"]
+discovery = ["zeroconf>=0.130"]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "numpy>=1.24", "pre-commit>=3", "zeroconf>=0.130"]
 
 [project.scripts]
 magicam-sim = "magicam.simulator:main"
@@ -39,5 +40,5 @@ files = ["magicam"]
 exclude = ["legacy"]
 
 [[tool.mypy.overrides]]
-module = ["maya.*", "maya", "PySide6", "PySide6.*", "PySide2", "PySide2.*", "shiboken6", "shiboken2"]
+module = ["maya.*", "maya", "PySide6", "PySide6.*", "PySide2", "PySide2.*", "shiboken6", "shiboken2", "zeroconf"]
 ignore_missing_imports = true

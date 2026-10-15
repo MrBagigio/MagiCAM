@@ -40,6 +40,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: MagiCAM usa la fotocamera per il tracking AR e manda la posa del telefono a Maya.
         NSLocalNetworkUsageDescription: MagiCAM manda la posa della camera al computer con Maya sulla rete locale.
+        NSBonjourServices: [_magicam._udp]
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

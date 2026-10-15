@@ -7,6 +7,7 @@ SCRITTO, NON ESEGUITO IN MAYA (F1.8): misure di coda e costo per tick da fare co
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from collections import deque
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from magicam import protocol
+from magicam.discovery import Advertiser
 from magicam.math3d import Transform, from_maya_matrix, to_maya_matrix
 from magicam.protocol import Command, CommandMessage, PoseMessage, StatsFlag, StatsMessage
 from magicam.receiver import Receiver
@@ -96,6 +98,9 @@ class MayaCameraBridge:
         self.auto_bake = True  # allo stop della take: chiavi sulla camera
         self.last_take_path: Path | None = None
         self.last_bake_keys = 0
+        self.advertiser: Advertiser | None = None
+        self.advertise = True  # Bonjour, se zeroconf c'e'
+        self.link_lost = False  # nessun pacchetto da piu' di STALE_AFTER_S dopo averne ricevuti
         self._unit = 100.0
         self._timer: Any = None
         self._script_job: int | None = None
@@ -115,11 +120,28 @@ class MayaCameraBridge:
         if not self.receiver.running:
             self.receiver.start()
         self._start_timer()
+        if self.advertise:
+            self.advertiser = Advertiser(self.receiver.port)
+            self.advertiser.start()
         log.info("bridge avviato su %s (%.0f Hz, %s unita'/m)", self.camera, self.tick_hz, self._unit)
 
     def stop(self) -> None:
         self._stop_timer()
+        if self.advertiser is not None:
+            self.advertiser.stop()
+            self.advertiser = None
         self.receiver.stop()
+
+    # --- pairing (F4.1) ------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def new_token() -> int:
+        """Codice a 6 cifre da leggere sul pannello e scrivere sul telefono."""
+        return 100000 + secrets.randbelow(900000)
+
+    def require_token(self, token: int | None) -> None:
+        """None = chiunque sulla LAN; un intero = solo i mittenti che mandano PING/comandi con quel token."""
+        self.receiver.expected_token = token
 
     def _start_timer(self) -> None:
         try:
@@ -166,6 +188,8 @@ class MayaCameraBridge:
                         self._apply(cam, msg)
                         applied = True
                     self.recorder.add(msg, cam)  # cam=None (hold): la take tiene l'ultima posa
+            st = self.receiver.stats
+            self.link_lost = st.last_recv_mono is not None and st.is_stale(time.monotonic())
             self._maybe_send_stats()
         except Exception:
             log.exception("tick")

@@ -20,12 +20,17 @@ final class UDPLink {
     var onState: ((State) -> Void)?
 
     func connect(host: String, port: UInt16) {
-        disconnect()
         guard let nwPort = NWEndpoint.Port(rawValue: port) else {
             setState(.failed("porta non valida"))
             return
         }
-        let conn = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .udp)
+        connect(to: .hostPort(host: NWEndpoint.Host(host), port: nwPort))
+    }
+
+    /// Anche un endpoint Bonjour (`.service`): Network.framework lo risolve da solo.
+    func connect(to endpoint: NWEndpoint) {
+        disconnect()
+        let conn = NWConnection(to: endpoint, using: .udp)
         conn.stateUpdateHandler = { [weak self] st in
             guard let self = self else { return }
             switch st {

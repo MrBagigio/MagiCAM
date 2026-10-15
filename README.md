@@ -13,7 +13,11 @@ eseguito in Maya ne' su iPhone.** Il POC di gennaio sta in `legacy/` ed e' super
 - `magicam.math3d`: ancora + scala relativa, con le risposte note di `docs/CONVENZIONI.md` nei test.
 - `magicam.receiver`: ultima posa valida, persi/riordinati/rifiutati/latenza contati esatti contro il simulatore.
 - `magicam.filters`: One Euro su posizione e quaternione, dt dal sensore (non tarato: F1.9).
-- `magicam.session`: calibra, ricentra, freeze senza salto, scala senza salto, blocchi d'asse.
+- `magicam.session`: calibra, ricentra, freeze senza salto, scala senza salto, blocchi d'asse; tracking perso o buco
+  nel flusso (Wi-Fi) → camera ferma, poi riparte da dov'e' senza salto.
+- `magicam.receiver`: pairing col codice a 6 cifre (PING ogni secondo dal telefono); senza, le pose si contano e basta.
+- `magicam.discovery`: annuncio Bonjour `_magicam._udp` con `zeroconf` (`pip install -e ".[discovery]"`).
+- `magicam.stress`: `python -m magicam.stress --duration 600` (receiver → session → take, memoria e costo per posa).
 - `magicam.simulator`: telefono finto (`python -m magicam.simulator --traj circle`).
 - `magicam.takes`: take per timestamp del sensore, ricampionate agli fps della scena (600 campioni a 60 Hz → 240
   chiavi a 24 fps, durata reale; il v1 ne faceva 600 = 25 s), JSON grezzo atomico accanto alla scena, cestino.

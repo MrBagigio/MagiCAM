@@ -6,6 +6,7 @@ import ARKit
 import Combine
 import Foundation
 import MagiCAMCore
+import Network
 
 final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     @Published var isRunning = false
@@ -26,6 +27,7 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private var lastStatsUptime: TimeInterval = 0
     private var wasRelocalizing = false
     private var uiFrameCounter = 0
+    private var framesSinceLastPing = 0
 
     override init() {
         super.init()
@@ -41,13 +43,23 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     // MARK: - ciclo di vita
 
     func start(host: String, port: UInt16) {
+        start(connecting: { $0.connect(host: host, port: port) })
+    }
+
+    func start(endpoint: NWEndpoint) {
+        start(connecting: { $0.connect(to: endpoint) })
+    }
+
+    private func start(connecting: (UDPLink) -> Void) {
         poseSeq = 0
-        link.connect(host: host, port: port)
+        framesSinceLastPing = 0
+        connecting(link)
         let config = ARWorldTrackingConfiguration()
         config.worldAlignment = .gravity
         session.run(config, options: [.resetTracking, .removeExistingAnchors])
         isRunning = true
         notice = nil
+        send(.ping) // primo abbinamento subito, prima delle pose
     }
 
     func stop() {
@@ -93,6 +105,13 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         )
         poseSeq &+= 1
         link.send(PoseEncoder.encode(message))
+
+        // PING col codice ogni secondo: e' cosi' che il PC abbina questo telefono (F4.1) e tiene vivo l'abbinamento
+        framesSinceLastPing += 1
+        if framesSinceLastPing >= 60 {
+            framesSinceLastPing = 0
+            send(.ping)
+        }
 
         uiFrameCounter += 1
         if uiFrameCounter % 15 == 0 { // 4 Hz di aggiornamento della UI: non il flusso dei pacchetti

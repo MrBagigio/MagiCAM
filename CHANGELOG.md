@@ -3,6 +3,29 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — F4: pairing, Bonjour, tracking perso, Wi-Fi caduto, stress — 2026-10-15
+
+**Cosa.** `receiver`: abbinamento del mittente con PING/comando col token (TTL 3 s), pose non abbinate contate in
+`unpaired`; `session`: ri-ancoraggio senza salto quando il tracking torna normale o fra due pose passa piu' di
+`gap_threshold_s` (0,5 s), contatore `reanchors`; `discovery.Advertiser` (zeroconf, opzionale);
+`stress` (receiver → session → recorder a 60 Hz, tracemalloc, costo per posa). Bridge: `new_token`,
+`require_token`, Bonjour all'avvio, `link_lost` dal silenzio del receiver. Pannello: codice, «Richiedi codice»,
+«COLLEGAMENTO PERSO da N s», non abbinate, ri-ancoraggi. App iOS (scritta, non compilata): campo codice,
+PING al secondo, `PCBrowser` (NWBrowser `_magicam._udp`), connessione all'endpoint Bonjour, `NSBonjourServices`.
+
+**Perche'.** PIANO §2.3 R3 (tracking ignorato), R5 (rete aperta, Bonjour dichiarato e mai fatto), §0.3 (Wi-Fi che
+cade senza salti).
+
+**Misurato (fuori da Maya).** 13 test nuovi: pose non abbinate = 0 effetto e contate (anche un secondo dispositivo
+che spara pose a 5 m: l'ultima posa resta quella del telefono abbinato); abbinamento scaduto dopo 3 s; tracking
+limited per 2 s con pose che saltano → camera ferma, al ritorno 0 salto (contrasto: con la vecchia calib > 3 m)
+e il passo dopo vale 10 cm; buco di 0,8 s → riparte da dov'era; buco di 0,4 s → nessun ri-ancoraggio; Bonjour
+visto da un browser mDNS sulla stessa macchina. Stress 20 s a 60 Hz in loopback: 1200/1200 accettate, 0 perse,
+update medio 98 us (max 485), memoria +1,24 MiB (la take: ~1 KiB per campione → ~36 MiB per 10 minuti).
+
+**Aperto.** Stress DENTRO Maya (F4.5: CPU e memoria del processo Maya, 10 min); Bonjour col telefono vero;
+il peso della take in memoria (1 KiB/campione: da stringere se le take lunghe pesano).
+
 ### v2 — F3: take per timestamp, chiavi agli fps della scena — 2026-10-15
 
 **Cosa.** `magicam/takes.py`: `TakeRecorder` (un campione per posa applicata, col `t_sensor`; in hold tiene l'ultima

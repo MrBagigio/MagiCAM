@@ -31,6 +31,14 @@ cambia i vettori in TUTTI E DUE i test, nello stesso commit.
 Il ricevitore **rifiuta** (eccezione tipizzata, conteggiata): magic o versione diversi, lunghezza diversa, NaN/inf,
 quaternione con norma fuori da [0.99, 1.01]. Non c'e' matrice: un quaternione non puo' portare taglio ne' scala.
 
+## Pairing (F4.1)
+
+Le pose NON portano il token (62 byte restano 62). Il PC mostra un codice a 6 cifre; il telefono lo manda nel
+campo `token` di ogni comando e di un `ping` al secondo. Il PC «abbina» l'indirizzo (IP, porta) del mittente per
+`PAIR_TTL_S` = 3 s dall'ultimo comando col token giusto; le pose di un mittente non abbinato si scartano e si
+contano (`unpaired`), un comando col token sbagliato si conta in `rejected`. Con il codice spento sul pannello
+(`expected_token = None`) chiunque sulla LAN muove la camera, come nel v1.
+
 ## 2 — command (telefono → PC, o PC → telefono), corpo 10 byte, totale 30
 
 | offset | campo | tipo | note |

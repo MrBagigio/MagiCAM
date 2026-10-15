@@ -9,6 +9,8 @@ struct ContentView: View {
     @StateObject private var manager = ARSessionManager()
     @AppStorage("magicam.host") private var host = "192.168.1.100"
     @AppStorage("magicam.port") private var port = 9000
+    @AppStorage("magicam.token") private var tokenText = ""
+    @StateObject private var browser = PCBrowser()
     @State private var frozen = false
     @State private var recording = false
 
@@ -24,11 +26,30 @@ struct ContentView: View {
                     TextField("Porta UDP", value: $port, format: .number)
                         .keyboardType(.numberPad)
                         .disabled(manager.isRunning)
+                    TextField("Codice sul pannello MagiCAM (vuoto = nessuno)", text: $tokenText)
+                        .keyboardType(.numberPad)
+                        .disabled(manager.isRunning)
+                    if !browser.found.isEmpty {
+                        Picker("PC trovati (Bonjour)", selection: $browser.selected) {
+                            Text("— IP a mano —").tag(Optional<String>.none)
+                            ForEach(browser.found, id: \.name) { pc in
+                                Text(pc.name).tag(Optional(pc.name))
+                            }
+                        }
+                        .disabled(manager.isRunning)
+                    } else {
+                        Text(browser.status).font(.footnote).foregroundColor(.secondary)
+                    }
                     Button(manager.isRunning ? "Ferma" : "Avvia") {
                         if manager.isRunning {
                             manager.stop()
                         } else {
-                            manager.start(host: host, port: UInt16(clamping: port))
+                            manager.token = UInt32(tokenText.trimmingCharacters(in: .whitespaces)) ?? 0
+                            if let pc = browser.selectedService {
+                                manager.start(endpoint: pc.endpoint)
+                            } else {
+                                manager.start(host: host, port: UInt16(clamping: port))
+                            }
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -78,6 +99,8 @@ struct ContentView: View {
             .navigationTitle("MagiCAM")
         }
         .navigationViewStyle(.stack)
+        .onAppear { browser.start() }
+        .onDisappear { browser.stop() }
     }
 
     private var linkText: String {

@@ -379,13 +379,13 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
 
 ### F4 — Robustezza e rete
 
-- [ ] F4.1 Pairing con token (mostrato dal PC, inserito o scansionato sul telefono); pacchetti senza token ignorati e
+- [x] F4.1 Pairing con token (mostrato dal PC, inserito o scansionato sul telefono); pacchetti senza token ignorati e *(fatto 2026-10-15 lato PC con test; lato app scritto, non compilato)*
       contati. **Prova**: secondo simulatore senza token → 0 effetto, contatore sale.
-- [ ] F4.2 Bonjour/mDNS lato PC (`zeroconf`) e `NWBrowser` lato iOS. **Prova**: telefono trova il PC senza IP.
-- [ ] F4.3 Tracking `limited`/`notAvailable`: la camera si congela, l'UI lo dice, al ritorno si ri-ancora senza salto.
+- [ ] F4.2 Bonjour/mDNS lato PC (`zeroconf`) e `NWBrowser` lato iOS. **Prova**: telefono trova il PC senza IP. *(Advertiser con zeroconf + test mDNS locale; NWBrowser scritto, non compilato; «il telefono trova il PC» da provare dal vivo)*
+- [x] F4.3 Tracking `limited`/`notAvailable`: la camera si congela, l'UI lo dice, al ritorno si ri-ancora senza salto. *(fatto 2026-10-15, `tests/test_robustness.py`)*
       **Prova**: simulatore manda `limited` per 2 s con pose che saltano → camera ferma.
-- [ ] F4.4 Wi-Fi che cade: timeout dichiarato (p.es. 0,5 s senza pacchetti → stato «perso», camera ferma).
-- [ ] F4.5 Stress misurato: 60 Hz per 10 min dentro Maya, memoria e CPU del processo Maya prima/dopo (H1).
+- [x] F4.4 Wi-Fi che cade: timeout dichiarato (p.es. 0,5 s senza pacchetti → stato «perso», camera ferma). *(fatto: soglia 0,5 s sul tempo del sensore in Session + «COLLEGAMENTO PERSO» nel pannello dal silenzio del receiver)*
+- [ ] F4.5 Stress misurato: 60 Hz per 10 min dentro Maya, memoria e CPU del processo Maya prima/dopo (H1). *(fuori da Maya fatto: 20 s in loopback, docs/MISURE.md; DENTRO Maya da fare)*
 
 ### F5 — Extra, uno alla volta e solo se li vuoi
 
