@@ -25,13 +25,17 @@ from magicam.session import Session
 STATE: dict = {}
 
 
-def setup(unit: str = "cm", tick_hz: float = 60.0, filter_on: bool = True, port: int = 9000) -> dict:
+def setup(
+    unit: str = "cm", tick_hz: float = 60.0, filter_on: bool = True, port: int = 9000, live_undo: bool = False
+) -> dict:
     teardown()
     found_unit = cmds.currentUnit(q=True, linear=True)  # C3: chi cambia uno stato lo rimette al valore TROVATO
     # Regola 8: la scena e' dell'utente. Il banco apre una scena nuova SOLO se quella aperta e' «untitled» e senza
     # modifiche; altrimenti si ferma e lo dice (il primo banco faceva file -new -force senza guardare).
-    if cmds.file(q=True, sceneName=True) or cmds.file(q=True, modified=True):
-        raise RuntimeError("scena aperta con nome o con modifiche: salva/chiudi tu, il banco non la butta")
+    # (`modified` da solo non basta: un Maya appena aperto e' gia' «modificato» dagli script di avvio.)
+    extra = [t for t in (cmds.ls(type="transform") or []) if t not in ("persp", "top", "front", "side")]
+    if cmds.file(q=True, sceneName=True) or extra:
+        raise RuntimeError(f"scena con nome o con oggetti ({extra[:5]}): salva/chiudi tu, il banco non la butta")
     cmds.file(new=True, force=True)
     cmds.currentUnit(linear=unit)
     STATE["found_unit"] = found_unit
@@ -43,6 +47,7 @@ def setup(unit: str = "cm", tick_hz: float = 60.0, filter_on: bool = True, port:
     bridge = MayaCameraBridge(session, receiver, cam, tick_hz=tick_hz)
     bridge.advertise = False
     bridge.auto_bake = False
+    bridge.live_undo = live_undo  # True solo per il contrasto: pose dal vivo nella coda di undo
     bridge.take_folder = Path(tempfile.gettempdir()) / "magicam_bench_takes"
     latencies: list[float] = []
     applied_seqs: list[int] = []
@@ -255,6 +260,9 @@ def report() -> dict:
             "max": max(lat) * 1000 if lat else None,
         },
         "session": {"hold": b.session.hold().value, "reanchors": b.session.state().reanchors},
+        # C2: quale codice ha girato, e cosa sta in cima alla coda di undo dopo il live (xform = pose dal vivo in coda)
+        "live_undo": getattr(b, "live_undo", "n/a: codice senza live_undo"),
+        "undo_top": cmds.undoInfo(q=True, undoName=True),
         "camera_pos": pos,
         "camera_dist_from_anchor_units": dist_from_anchor,
         "expected_dist_units_P_minus_C": expected_dist,

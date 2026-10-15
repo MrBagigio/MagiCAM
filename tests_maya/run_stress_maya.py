@@ -89,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rate", type=float, default=60.0)
     p.add_argument("--port", type=int, default=9000)
     p.add_argument("--sample-period", type=float, default=10.0)
+    p.add_argument("--live-undo", action="store_true", help="contrasto: le pose dal vivo entrano nella coda di undo")
     a = p.parse_args(argv)
 
     gw = Gateway()
@@ -105,7 +106,10 @@ def main(argv: list[str] | None = None) -> int:
     out["rest_before"] = {"samples": rest.samples, "cpu_pct": cpu_percent(rest.samples)}
     print("PARTIAL=" + json.dumps({"rest_before": out["rest_before"]}), flush=True)
 
-    setup = gw.py_json(PRELUDE + f"print(bench_bridge.dumps(bench_bridge.setup(unit='cm', port={a.port})))", "BENCH")
+    setup = gw.py_json(
+        PRELUDE + f"print(bench_bridge.dumps(bench_bridge.setup(unit='cm', port={a.port}, live_undo={a.live_undo})))",
+        "BENCH",
+    )
     out["setup"] = setup
     sampler = Sampler(pid, a.sample_period)
     sampler.start()

@@ -3,6 +3,28 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — Bake in blocco misurato, undo pulito, il «Maya inchiodato» che non lo era — 2026-10-15
+
+**Cosa.** `bake_take` scrive le curve con `MFnAnimCurve.addKeys` (canali da `takes.channel_curves`, Euler XYZ continui
+scegliendo la terna piu' vicina alla precedente); le pose dal vivo non entrano nella coda di undo
+(`undoInfo(stateWithoutFlush=False)` attorno a xform/setAttr, `live_undo=True` solo per il contrasto); banchi con
+guardia sulla scena (nome o oggetti), ripristino dell'unita', `run_bench_bake.py`, `run_stress_maya.py` con parziali.
+App iOS (scritta, non compilata): Freeze/Rec a video dai FLAG del PC, slider logaritmico della scala (SCALE_SET),
+feedback aptico.
+
+**Misurato (docs/MISURE.md).** Bake API: 14354 chiavi in 0,174 s, lineare, chiave a meta' esatta, 0 salti Euler,
+annullabile (4 undo tolgono bake e curve). Bake vecchio: lineare, 0,87 ms/chiave (~12,5 s a 14354): il blocco di 55
+minuti NON era il bake. Quel Maya a 85-88% di CPU e 11 GB era il suo stato di RIPOSO: misurato sulla seconda istanza
+vuota, 85% di un core sul main thread (native_id 53668) con uno scriptJob `idleEvent` di dcc-mcp, 10,6 GB privati
+prima di qualunque cosa di MagiCAM. A cadere fu il ponte main-thread di dcc-mcp dopo il timeout della chiamata lunga
+(ipotesi che regge ai dati, non provata). Correzione di cio' che avevo scritto prima: «Maya inchiodato nel bake».
+Stress 120 s (undo on / off): 7200/7200, 0 perse, +27% di un core per il live, memoria ±20 MB (rumore), cima
+dell'undo dopo il live non piu' un xform. 114 test fuori da Maya.
+
+**Aperto.** Stress 10 min VALIDO (ogni giro di oggi aveva un mayapy di un'altra chat accanto); l'85% di CPU a riposo
+del Maya dell'utente e' un fatto da riferire a chi mantiene dcc-mcp, non di MagiCAM; F2.6 iPhone; pannello aperto
+in Maya per la prova dell'utente (esito da scrivere).
+
 ### v2 — Prime misure nel Maya vero (2026): convenzione, bridge, latenza, take — 2026-10-15
 
 **Cosa.** `tests_maya/`: `mcp_gateway.py` (client MCP streamable-HTTP per il gateway dcc-mcp del Maya aperto),

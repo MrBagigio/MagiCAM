@@ -26,8 +26,10 @@ from magicam.math3d import Transform, from_maya_matrix, quat_from_axis_angle, to
 def misura() -> dict:
     # Regola 8: la scena e' dell'utente. Il banco apre una scena nuova SOLO se quella aperta e' «untitled» e senza
     # modifiche; altrimenti si ferma e lo dice (il primo banco faceva file -new -force senza guardare).
-    if cmds.file(q=True, sceneName=True) or cmds.file(q=True, modified=True):
-        raise RuntimeError("scena aperta con nome o con modifiche: salva/chiudi tu, il banco non la butta")
+    # (`modified` da solo non basta: un Maya appena aperto e' gia' «modificato» dagli script di avvio.)
+    extra = [t for t in (cmds.ls(type="transform") or []) if t not in ("persp", "top", "front", "side")]
+    if cmds.file(q=True, sceneName=True) or extra:
+        raise RuntimeError(f"scena con nome o con oggetti ({extra[:5]}): salva/chiudi tu, il banco non la butta")
     cmds.file(new=True, force=True)
     unit = cmds.currentUnit(q=True, linear=True)
     cam = cmds.camera(name="magicam_f1_1")[0]

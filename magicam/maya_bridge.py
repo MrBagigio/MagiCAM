@@ -112,6 +112,7 @@ class MayaCameraBridge:
         self.advertiser: Advertiser | None = None
         self.advertise = True  # Bonjour, se zeroconf c'e'
         self.link_lost = False  # nessun pacchetto da piu' di STALE_AFTER_S dopo averne ricevuti
+        self.live_undo = False  # True = le pose dal vivo entrano nella coda di undo (solo per il contrasto del banco)
         self._unit = INTERNAL_UNITS_PER_METER
         self._ui_unit = 100.0
         self._timer: Any = None
@@ -222,13 +223,22 @@ class MayaCameraBridge:
 
     def _apply(self, cam: Transform, msg: PoseMessage) -> None:
         cmds = _cmds()
-        cmds.xform(self.camera, ws=True, matrix=to_maya_matrix(cam, self._unit))
-        if self.drive_lens and msg.focal_px > 0 and msg.image_w > 0:
-            shape = self._shape()
-            if shape is not None:
-                hfa_in = float(cmds.getAttr(f"{shape}.horizontalFilmAperture"))
-                focal_mm = msg.focal_px * hfa_in * 25.4 / msg.image_w
-                cmds.setAttr(f"{shape}.focalLength", focal_mm)
+        # Le pose dal vivo NON entrano nella coda di undo (60 al secondo, e con la coda infinita del Maya
+        # dell'utente — misurata il 2026-10-15 — erano 36000 voci in dieci minuti): stateWithoutFlush spegne la
+        # registrazione senza buttare cio' che l'artista ha gia' in coda. `live_undo=True` solo per il contrasto.
+        if not self.live_undo:
+            cmds.undoInfo(stateWithoutFlush=False)
+        try:
+            cmds.xform(self.camera, ws=True, matrix=to_maya_matrix(cam, self._unit))
+            if self.drive_lens and msg.focal_px > 0 and msg.image_w > 0:
+                shape = self._shape()
+                if shape is not None:
+                    hfa_in = float(cmds.getAttr(f"{shape}.horizontalFilmAperture"))
+                    focal_mm = msg.focal_px * hfa_in * 25.4 / msg.image_w
+                    cmds.setAttr(f"{shape}.focalLength", focal_mm)
+        finally:
+            if not self.live_undo:
+                cmds.undoInfo(stateWithoutFlush=True)
 
     def _shape(self) -> str | None:
         cmds = _cmds()
