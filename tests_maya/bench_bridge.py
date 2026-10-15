@@ -27,8 +27,10 @@ STATE: dict = {}
 
 def setup(unit: str = "cm", tick_hz: float = 60.0, filter_on: bool = True, port: int = 9000) -> dict:
     teardown()
+    found_unit = cmds.currentUnit(q=True, linear=True)  # C3: chi cambia uno stato lo rimette al valore TROVATO
     cmds.file(new=True, force=True)
     cmds.currentUnit(linear=unit)
+    STATE["found_unit"] = found_unit
     cam = cmds.camera(name="magicam_bench")[0]
     upm = {"cm": 100.0, "m": 1.0, "mm": 1000.0}[unit]
     cmds.xform(cam, ws=True, t=(5.0 * upm, 1.5 * upm, 0.0), ro=(0.0, 90.0, 0.0))
@@ -225,6 +227,9 @@ def teardown() -> dict:
     cam = STATE.get("cam")
     if cam and cmds.objExists(cam):
         cmds.delete(cam)
+    found = STATE.get("found_unit")
+    if found:
+        cmds.currentUnit(linear=found)
     STATE.clear()
     return {"clean": True}
 
