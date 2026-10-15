@@ -98,6 +98,23 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         opts.addWidget(self.lock_d)
         lay.addLayout(opts)
 
+        take_row = QtWidgets.QHBoxLayout()
+        take_row.addWidget(QtWidgets.QLabel("Take"))
+        self.take_name = QtWidgets.QLineEdit()
+        self.take_name.setPlaceholderText("nome (vuoto = data e ora)")
+        take_row.addWidget(self.take_name)
+        self.rec_btn = QtWidgets.QPushButton("Rec")
+        self.rec_btn.clicked.connect(self._toggle_rec)
+        take_row.addWidget(self.rec_btn)
+        self.bake_chk = QtWidgets.QCheckBox("Chiavi allo stop")
+        self.bake_chk.setChecked(True)
+        self.bake_chk.toggled.connect(lambda v: setattr(self.bridge, "auto_bake", bool(v)))
+        take_row.addWidget(self.bake_chk)
+        lay.addLayout(take_row)
+        self.take_status = QtWidgets.QLabel("")
+        self.take_status.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        lay.addWidget(self.take_status)
+
         self.status = QtWidgets.QLabel("fermo")
         self.status.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         lay.addWidget(self.status)
@@ -138,6 +155,20 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
     def _set_scale(self, v: float) -> None:
         self.session.set_scale(float(v))
 
+    def _toggle_rec(self) -> None:
+        if self.bridge.recorder.recording:
+            try:
+                path = self.bridge.stop_take()
+            except (RuntimeError, OSError, ValueError) as e:
+                QtWidgets.QMessageBox.critical(self, "MagiCAM", f"Take non salvata: {e}")
+                return
+            chiavi = f", {self.bridge.last_bake_keys} chiavi" if self.bridge.auto_bake else ""
+            self.take_status.setText(f"salvata: {path}{chiavi}")
+        else:
+            self.bridge.start_take(self.take_name.text().strip())
+            self.take_status.setText(f"registro «{self.bridge.recorder.name}»…")
+        self.refresh()
+
     def _set_filter(self, on: bool) -> None:
         self.session.filter_enabled = bool(on)
 
@@ -148,6 +179,8 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         st = self.receiver.stats
         ts = self.bridge.stats
         self.freeze_btn.setText("Rilascia" if s.frozen else "Freeze")
+        rec = self.bridge.recorder
+        self.rec_btn.setText(f"Stop ({rec.sample_count})" if rec.recording else "Rec")
         running = "in ascolto" if self.receiver.running else "fermo"
         self.status.setText(
             f"{running} · {s.hold.value} · ricevute {st.received} · perse {st.lost} · riordinate {st.reordered} · "

@@ -15,10 +15,13 @@ eseguito in Maya ne' su iPhone.** Il POC di gennaio sta in `legacy/` ed e' super
 - `magicam.filters`: One Euro su posizione e quaternione, dt dal sensore (non tarato: F1.9).
 - `magicam.session`: calibra, ricentra, freeze senza salto, scala senza salto, blocchi d'asse.
 - `magicam.simulator`: telefono finto (`python -m magicam.simulator --traj circle`).
+- `magicam.takes`: take per timestamp del sensore, ricampionate agli fps della scena (600 campioni a 60 Hz → 240
+  chiavi a 24 fps, durata reale; il v1 ne faceva 600 = 25 s), JSON grezzo atomico accanto alla scena, cestino.
 
 ## Cosa e' scritto e NON provato
 
-- `magicam.maya_bridge` (timer sul main thread, `xform` + lente) e `magicam.ui.panel`: aspettano Maya (F1.8-F1.10).
+- `magicam.maya_bridge` (timer sul main thread, `xform` + lente, cottura delle chiavi con filtro Euler) e
+  `magicam.ui.panel` (anche Rec/Stop take): aspettano Maya (F1.8-F1.10, F3.4).
 - La convenzione della lista di `xform -matrix`: dichiarata in `docs/CONVENZIONI.md`, da misurare (F1.1).
 - `ios/`: app SwiftUI (`MagiCAM/`) + pacchetto `Packages/MagiCAMCore` (protocollo, XCTest sugli stessi vettori di
   Python), progetto generato da XcodeGen (`ios/project.yml`). Mai compilata: lo fa `.github/workflows/ios-build.yml`

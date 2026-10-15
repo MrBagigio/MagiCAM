@@ -3,6 +3,26 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — F3: take per timestamp, chiavi agli fps della scena — 2026-10-15
+
+**Cosa.** `magicam/takes.py`: `TakeRecorder` (un campione per posa applicata, col `t_sensor`; in hold tiene l'ultima
+posa; scarta tempo che non avanza), `resample` (una chiave per fotogramma, lerp posizione e slerp rotazione per
+TEMPO; floor(durata·fps)+1 chiavi), `save_take`/`load_take` (JSON grezzo, tmp + `os.replace`, mai sovrascrive,
+rifiuti tipizzati), `TakeLibrary` (accanto alla scena; `discard` sposta in `_cestino/`), `fps_from_maya_time_unit`.
+`maya_bridge`: `start_take`/`stop_take` (anche dai comandi del telefono), `bake_take` (xform + setKeyframe per
+fotogramma dal fotogramma corrente, focale, `filterCurve` sugli Euler, un solo blocco di undo). Pannello: Rec/Stop,
+nome take, «chiavi allo stop».
+
+**Perche'.** PIANO §2.2 T1: il v1 scriveva una chiave per PACCHETTO e avanzava la timeline di un fotogramma: 60
+pacchetti/s su 24 fps = take 2,5x veloce, buchi dove l'operatore stava fermo.
+
+**Misurato (fuori da Maya, `tests/test_takes.py`, 19 test).** 600 campioni a 60 Hz → 240 chiavi a 24 fps, durata
+9,96 s (contrasto v1: 600 chiavi = 25 s); 10% di campioni persi → ancora 240 chiavi contigue, posizioni esatte sul
+moto lineare; operatore fermo 3 s → camera ferma 3 s; hold registra l'ultima posa; file corrotti rifiutati.
+
+**Aperto.** `bake_take` e il pannello in Maya (F3.4: take dal vivo di 20 s, playblast, confronto col video del
+telefono). Ricuocere con altra scala dal `phone` grezzo (campo salvato, funzione non scritta). Lista take nella UI.
+
 ### v2 — F2: app iOS scritta, non compilata — 2026-10-15
 
 **Cosa.** `ios/Packages/MagiCAMCore`: il protocollo in Swift puro (`Protocol.swift`, `PoseEncoder.swift`, byte per

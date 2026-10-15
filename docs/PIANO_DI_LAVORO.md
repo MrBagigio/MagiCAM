@@ -367,14 +367,14 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
 
 ### F3 — Take
 
-- [ ] F3.1 `takes.py`: Rec start/stop (da UI o dal telefono), campioni in memoria (t_sensor, pos, quat, lente, tracking),
+- [x] F3.1 `takes.py`: Rec start/stop (da UI o dal telefono), campioni in memoria (t_sensor, pos, quat, lente, tracking), *(fatto 2026-10-15: `takes.py`, JSON atomico, `tests/test_takes.py`)*
       metadati (nome take, scena, fps, unita', sha app/pacchetto, device, data), salvataggio JSON della take GREZZA
       accanto alla scena (una take non si perde se Maya cade: scrittura atomica).
-- [ ] F3.2 Ricampionamento agli fps della scena (interpolazione lineare pos, slerp quat, per tempo), cottura delle chiavi
+- [x] F3.2 Ricampionamento agli fps della scena (interpolazione lineare pos, slerp quat, per tempo), cottura delle chiavi *(ricampionamento provato fuori da Maya: 240 chiavi, perdita 10%, fermo 3 s; `bake_take` scritto, non eseguito in Maya)*
       su camera e lente, dal fotogramma corrente; `undo` in un solo chunk. **Prova**: 60 Hz per 10 s su scena a 24 fps
       → 240 chiavi esatte, durata 10,00 s (contrasto: il vecchio codice darebbe 600 chiavi = 25 s); con il 10% dei
       pacchetti persi → ancora 240 chiavi, nessun buco; take in cui l'operatore sta fermo 3 s → la camera sta ferma 3 s.
-- [ ] F3.3 Lista take, ricuoci su un'altra camera, elimina (sposta in `_cestino/`, regola 8).
+- [x] F3.3 Lista take, ricuoci su un'altra camera, elimina (sposta in `_cestino/`, regola 8). *(libreria e cestino fatti; ricuoci su altra camera = `bake_take(take, camera)`, non provato in Maya; lista nella UI da fare)*
 - [ ] F3.4 Prova dal vivo: una take di 20 s con l'iPhone, playblast, confronto a occhio col video del telefono (B3).
 
 ### F4 — Robustezza e rete

@@ -11,6 +11,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from magicam import protocol
@@ -18,6 +19,7 @@ from magicam.math3d import Transform, from_maya_matrix, to_maya_matrix
 from magicam.protocol import Command, CommandMessage, PoseMessage, StatsFlag, StatsMessage
 from magicam.receiver import Receiver
 from magicam.session import Hold, Session
+from magicam.takes import Take, TakeLibrary, TakeRecorder, default_take_folder, fps_from_maya_time_unit, resample
 
 log = logging.getLogger("magicam.maya_bridge")
 
@@ -89,7 +91,11 @@ class MayaCameraBridge:
         self.drive_lens = drive_lens
         self.on_state_changed = on_state_changed
         self.stats = TickStats()
-        self.recording = False  # F3
+        self.recorder = TakeRecorder()
+        self.take_folder: Path | None = None  # None = accanto alla scena (takes.default_take_folder)
+        self.auto_bake = True  # allo stop della take: chiavi sulla camera
+        self.last_take_path: Path | None = None
+        self.last_bake_keys = 0
         self._unit = 100.0
         self._timer: Any = None
         self._script_job: int | None = None
@@ -159,6 +165,7 @@ class MayaCameraBridge:
                     if cam is not None:
                         self._apply(cam, msg)
                         applied = True
+                    self.recorder.add(msg, cam)  # cam=None (hold): la take tiene l'ultima posa
             self._maybe_send_stats()
         except Exception:
             log.exception("tick")
@@ -202,8 +209,12 @@ class MayaCameraBridge:
             self.session.unfreeze()
         elif cmd is Command.SCALE_SET:
             self.session.set_scale(value)
-        elif cmd in (Command.REC_START, Command.REC_STOP):
-            log.info("take: %s (F3, non ancora)", cmd.name)
+        elif cmd is Command.REC_START:
+            if not self.recorder.recording:
+                self.start_take()
+        elif cmd is Command.REC_STOP:
+            if self.recorder.recording:
+                self.stop_take()
         elif cmd is Command.PING:
             pass
         if self.on_state_changed is not None:
@@ -218,6 +229,73 @@ class MayaCameraBridge:
         msg, _ = latest
         self.session.calibrate(Transform(msg.pos, msg.quat), self.camera_world())
         return True
+
+    # --- take (F3) ------------------------------------------------------------------------------------------------
+
+    def scene_fps(self) -> float:
+        return fps_from_maya_time_unit(str(_cmds().currentUnit(q=True, time=True)))
+
+    def take_library(self) -> TakeLibrary:
+        folder = self.take_folder
+        if folder is None:
+            scene = _cmds().file(q=True, sceneName=True) or None
+            folder = default_take_folder(scene)
+        return TakeLibrary(folder)
+
+    def start_take(self, name: str = "") -> None:
+        self.recorder.start(name)
+        log.info("take «%s»: registrazione", self.recorder.name)
+
+    def stop_take(self) -> Path:
+        """Ferma, salva la take GREZZA (atomico, mai sovrascrive) e, se auto_bake, cuoce le chiavi."""
+        cmds = _cmds()
+        take = self.recorder.stop(
+            {
+                "scene": cmds.file(q=True, sceneName=True) or "",
+                "scene_fps": self.scene_fps(),
+                "units_per_meter": self._unit,
+                "camera": self.camera,
+                "scale": self.session.scale,
+            }
+        )
+        path = self.take_library().save(take)
+        self.last_take_path = path
+        log.info("take «%s»: %d campioni, %.2f s -> %s", take.name, len(take.samples), take.duration, path)
+        if self.auto_bake:
+            self.last_bake_keys = self.bake_take(take)
+        return path
+
+    def bake_take(
+        self, take: Take, camera: str | None = None, fps: float | None = None, start_frame: int | None = None
+    ) -> int:
+        """Una chiave per fotogramma, dal fotogramma corrente, in un solo blocco di undo. Torna quante."""
+        cmds = _cmds()
+        cam = camera or self.camera
+        if not cmds.objExists(cam):
+            raise RuntimeError(f"camera '{cam}' non esiste")
+        fps = fps or self.scene_fps()
+        start = round(float(cmds.currentTime(q=True))) if start_frame is None else start_frame
+        keys = resample(take, fps, start)
+        if not keys:
+            return 0
+        shapes = cmds.listRelatives(cam, shapes=True, type="camera") or []
+        shape = str(shapes[0]) if shapes else None
+        hfa_in = float(cmds.getAttr(f"{shape}.horizontalFilmAperture")) if shape else 0.0
+        image_w = next((s.image_w for s in take.samples if s.image_w > 0), 0)
+        cmds.undoInfo(openChunk=True, chunkName="MagiCAM take")
+        try:
+            for k in keys:
+                cmds.xform(cam, ws=True, matrix=to_maya_matrix(k.camera, self._unit))
+                cmds.setKeyframe(cam, attribute=["translate", "rotate"], time=k.frame)
+                if self.drive_lens and shape and k.focal_px > 0 and image_w > 0:
+                    focal_mm = k.focal_px * hfa_in * 25.4 / image_w
+                    cmds.setKeyframe(shape, attribute="focalLength", time=k.frame, value=focal_mm)
+            # continuita' degli Euler fra fotogrammi (xform puo' saltare da -179 a +179)
+            cmds.filterCurve(f"{cam}.rotateX", f"{cam}.rotateY", f"{cam}.rotateZ")
+        finally:
+            cmds.undoInfo(closeChunk=True)
+        log.info("take «%s»: %d chiavi a %.3f fps da %d", take.name, len(keys), fps, start)
+        return len(keys)
 
     def camera_world(self) -> Transform:
         m = list(_cmds().xform(self.camera, q=True, ws=True, matrix=True))
@@ -237,7 +315,7 @@ class MayaCameraBridge:
             flags |= StatsFlag.CALIBRATED
         if s.frozen:
             flags |= StatsFlag.FROZEN
-        if self.recording:
+        if self.recorder.recording:
             flags |= StatsFlag.RECORDING
         if s.hold is Hold.TRACKING:
             flags |= StatsFlag.TRACKING_BAD
