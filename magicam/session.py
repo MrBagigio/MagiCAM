@@ -162,6 +162,18 @@ class Session:
     def last_camera(self) -> Transform | None:
         return self._last_camera
 
+    @property
+    def calib(self) -> Transform | None:
+        return self._calib
+
+    @property
+    def anchor(self) -> Transform | None:
+        return self._anchor
+
+    @property
+    def last_phone(self) -> Transform | None:
+        return self._last_phone
+
     # --- interni -----------------------------------------------------------------------------------------------
 
     def _reanchor_here(self) -> None:

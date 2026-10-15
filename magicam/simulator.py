@@ -4,6 +4,8 @@ E' lo strumento con cui si provano receiver, session e bridge senza iPhone. Prim
 passa su un caso di cui si sa l'esito (tests/test_simulator.py).
 
 Uso:  python -m magicam.simulator --host 127.0.0.1 --port 9000 --traj circle --rate 60 --duration 10
+      --clock host  -> t_sensor = time.perf_counter() all'invio: sulla stessa macchina del ricevitore e' l'orologio
+                       condiviso, e la latenza misurata e' quella vera (time.monotonic su Windows: passo di 15,6 ms)
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 from magicam.math3d import Transform, quat_from_axis_angle
-from magicam.protocol import PoseMessage, TrackingReason, TrackingState, pack_pose
+from magicam.protocol import PoseMessage, TrackingReason, TrackingState, pack_pose, unpack
 
 Trajectory = Callable[[float], Transform]  # t (s) -> posa del telefono nel mondo ARKit (metri)
 
@@ -82,6 +84,7 @@ class SimulatorConfig:
     limited_for_s: float = 0.0
     seed: int | None = 0
     t0: float = 1000.0  # t_sensor di partenza (orologio monotono finto)
+    sensor_clock: str = "fake"  # "fake" = t0 + t_rel (deterministico); "host" = time.perf_counter() all'invio
 
 
 @dataclass
@@ -126,15 +129,21 @@ def generate(traj: Trajectory, cfg: SimulatorConfig) -> Iterator[tuple[SentRecor
 def run(traj: Trajectory, cfg: SimulatorConfig, host: str, port: int, realtime: bool = True) -> list[SentRecord]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     records: list[SentRecord] = []
-    start = time.monotonic()
+    start = time.perf_counter()
     dt = 1.0 / cfg.rate_hz
     for rec, data in generate(traj, cfg):
         records.append(rec)
         if data:
+            if cfg.sensor_clock == "host":
+                m = unpack(data)
+                assert isinstance(m, PoseMessage)
+                data = pack_pose(
+                    PoseMessage(m.seq, time.perf_counter(), m.tracking_state, m.tracking_reason, m.pos, m.quat)
+                )
             sock.sendto(data, (host, port))
         if realtime:
             target = start + (rec.seq + 1) * dt
-            delay = target - time.monotonic()
+            delay = target - time.perf_counter()
             if delay > 0:
                 time.sleep(delay)
     sock.close()
@@ -152,8 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--reorder", type=float, default=0.0)
     p.add_argument("--limited-from", type=float, default=None)
     p.add_argument("--limited-for", type=float, default=0.0)
+    p.add_argument("--clock", choices=["fake", "host"], default="fake")
     a = p.parse_args(argv)
-    cfg = SimulatorConfig(a.rate, a.duration, a.loss, a.reorder, a.limited_from, a.limited_for)
+    cfg = SimulatorConfig(a.rate, a.duration, a.loss, a.reorder, a.limited_from, a.limited_for, sensor_clock=a.clock)
     recs = run(TRAJECTORIES[a.traj](), cfg, a.host, a.port)
     sent = sum(1 for r in recs if r.sent)
     print(f"inviati {sent}/{len(recs)} pacchetti ({a.traj} @ {a.rate} Hz per {a.duration} s) a {a.host}:{a.port}")

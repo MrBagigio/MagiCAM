@@ -13,8 +13,8 @@ from magicam.simulator import SimulatorConfig
 
 
 def wait_until(pred, timeout=3.0):
-    t_end = time.monotonic() + timeout
-    while time.monotonic() < t_end:
+    t_end = time.perf_counter() + timeout
+    while time.perf_counter() < t_end:
         if pred():
             return True
         time.sleep(0.01)
@@ -111,9 +111,9 @@ def test_stats_go_back_to_the_sender(receiver):
 
 
 def test_stale_detection(receiver):
-    assert receiver.stats.is_stale(time.monotonic())
+    assert receiver.stats.is_stale(time.perf_counter())
     items = list(simulator.generate(simulator.still(), SimulatorConfig(rate_hz=10, duration_s=0.1)))
     send_all(items, receiver.port)
     assert wait_until(lambda: receiver.stats.received == 1)
-    assert not receiver.stats.is_stale(time.monotonic())
-    assert receiver.stats.is_stale(time.monotonic() + 1.0)
+    assert not receiver.stats.is_stale(time.perf_counter())
+    assert receiver.stats.is_stale(time.perf_counter() + 1.0)

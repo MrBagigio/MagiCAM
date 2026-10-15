@@ -10,8 +10,8 @@ from magicam.simulator import SimulatorConfig
 
 
 def wait_until(pred, timeout=3.0):
-    t_end = time.monotonic() + timeout
-    while time.monotonic() < t_end:
+    t_end = time.perf_counter() + timeout
+    while time.perf_counter() < t_end:
         if pred():
             return True
         time.sleep(0.01)
@@ -82,7 +82,7 @@ def test_pairing_expires_after_ttl_without_pings():
         phone.sendto(pack_command(CommandMessage(1, 0.0, Command.PING, token=7)), ("127.0.0.1", r.port))
         assert wait_until(lambda: r.stats.commands == 1)
         addr = phone.getsockname()
-        now = time.monotonic()
+        now = time.perf_counter()
         assert r._is_paired(("127.0.0.1", addr[1]), now)
         assert not r._is_paired(("127.0.0.1", addr[1]), now + PAIR_TTL_S + 0.01)
         assert r.paired_senders(now + PAIR_TTL_S + 0.01) == []

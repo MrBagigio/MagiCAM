@@ -68,8 +68,8 @@ def run(duration_s: float, rate_hz: float = 60.0, record: bool = True, realtime:
         costs: list[float] = []
         applied_seq = -1
         sender.start()
-        t_end = time.monotonic() + duration_s + 1.0
-        while sender.is_alive() or time.monotonic() < t_end:
+        t_end = time.perf_counter() + duration_s + 1.0
+        while sender.is_alive() or time.perf_counter() < t_end:
             latest = receiver.latest()
             if latest is not None and latest[0].seq != applied_seq:
                 msg = latest[0]

@@ -52,19 +52,33 @@ Risposte note (test `tests/test_math3d.py`, scritte PRIMA del codice):
 | I | pos (5, 1.5, 0), yaw 90° | −0.10 m in Z | pos (4.9, 1.5, 0), yaw 90° |
 | I | I, scale 0.1 | +0.10 m in X | +0.01 m in X |
 
-## La lista di `cmds.xform(matrix=…)` — [dichiarata, NON misurata: F1.1]
+## La lista di `cmds.xform(matrix=…)` — [MISURATA il 2026-10-15, Maya 2026, `tests_maya/f1_1_convenzione_xform.py`]
 
 Maya tratta i punti come **righe**: `p' = p · M`. La lista di 16 che `xform -q -ws -matrix` restituisce e che
 `xform -ws -matrix` accetta e' `M` riga per riga, quindi:
 
 - indici 0-2 = asse X locale nel mondo, 4-6 = asse Y, 8-10 = asse Z (le RIGHE sono gli assi);
-- indici 12, 13, 14 = traslazione;
+- indici 12, 13, 14 = traslazione, **in cm interni qualunque sia l'unita' della scena** (`-t` invece parla in unita'
+  della UI): misurato con la scena a metri, `matrix[12] = 100` → `-q -t = 1.0 m`, e `-t 2 m` → `matrix[12] = 200`.
+  Il bridge usa quindi `INTERNAL_UNITS_PER_METER = 100` per la matrice, sempre; il banco F1.8 a metri lo aveva
+  mostrato con una camera che si muoveva di 1/100 (4 mm invece di 42 cm);
 - la 3x3 e' la **trasposta** di `R(q)` della convenzione colonna-vettore qui sopra.
 
-`math3d.to_maya_matrix(T)` produce esattamente questo. Il POC di gennaio metteva la traslazione in 3, 7, 11 e la 3x3
-non trasposta: ecco il moto invertito (`docs/PIANO_DI_LAVORO.md` §2.1 F1).
+`math3d.to_maya_matrix(T)` produce esattamente questo (differenza massima 5,6e-17 dalla lista scritta a mano). Il POC
+di gennaio metteva la traslazione in 3, 7, 11 e la 3x3 non trasposta: ecco il moto invertito (`docs/PIANO_DI_LAVORO.md`
+§2.1 F1).
 
-**Misura da fare (F1.1)**, in un Maya nudo, farm ferma:
+**Esito della misura (2026-10-15, Maya 2026, scena in cm, Python 3.11.9, via gateway dcc-mcp):**
+
+| caso | atteso (scritto prima) | misurato |
+|---|---|---|
+| A) lista con Ry(+20) nelle righe e (1,2,3) in 12-14 | `-q -t` = (1,2,3), `-q -ro` = (0,20,0) | (1.0, 2.0, 3.0), (0.0, 20.0, 0.0) ✔ |
+| B) CONTRASTO: layout del v1 (traslazione in 3,7,11, 3x3 non trasposta) | diverso da A | `-t` = (0,0,0), `-ro` = (0, **−20**, 0): il difetto del v1 ✔ |
+| C) `to_maya_matrix` contro la lista A | identica | diff max 5,6e-17 ✔ |
+| D) `from_maya_matrix(xform -q -matrix)` | posa di partenza | errore 0.0 m, 0.0° ✔ |
+| E) scena a metri, `matrix[12]=100` | `-t` = 1.0 m | (1.0, 0.0, 0.0); `-t 2 m` → `matrix[12]` = 200 ✔ |
+
+**Il comando della misura (si rilancia con `tests_maya/f1_1_convenzione_xform.py`):**
 ```python
 import maya.cmds as cmds, math
 cmds.file(new=True, force=True)
@@ -78,4 +92,4 @@ print(cmds.xform(cam, q=True, ws=True, ro=True))  # atteso [0.0, 20.0, 0.0]
 cmds.xform(cam, ws=True, matrix=[c,0,s,1,  0,1,0,2,  -s,0,c,3,  0,0,0,1])
 print(cmds.xform(cam, q=True, ws=True, t=True), cmds.xform(cam, q=True, ws=True, ro=True))
 ```
-Esito, data, versione di Maya: *da scrivere qui.*
+Esito: tabella qui sopra (2026-10-15, Maya 2026). Chi cambia versione di Maya rilancia lo script e aggiorna la tabella.

@@ -3,6 +3,24 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — Prime misure nel Maya vero (2026): convenzione, bridge, latenza, take — 2026-10-15
+
+**Cosa.** `tests_maya/`: `mcp_gateway.py` (client MCP streamable-HTTP per il gateway dcc-mcp del Maya aperto),
+`f1_1_convenzione_xform.py` (F1.1), `bench_bridge.py` + `run_bench_bridge.py` (F1.8/F1.9/F3: simulatore dal PC,
+bridge dentro Maya). Cure nate dalle misure: `Qt.TimerType` (non `QTimer.TimerType`: il bridge non partiva);
+matrice di `xform` in cm INTERNI sempre (`INTERNAL_UNITS_PER_METER`); niente `SO_REUSEADDR` sull'UDP (un orfano
+rubava i pacchetti in silenzio); `Receiver.drain_recent()` e tick che passa TUTTE le pose a sessione e take;
+`perf_counter` al posto di `monotonic` (15,6 ms di passo su Windows); One Euro tarato (beta 10) con velocita'
+angolare come vettore firmato; simulatore `--clock host`.
+
+**Misurato (docs/MISURE.md, docs/CONVENZIONI.md).** F1.1: convenzione riga-vettore confermata, contrasto v1 →
+yaw −20 e traslazione persa; traslazione della matrice in cm anche a metri. F1.8: 3600/3600, 0 fuori ordine,
+tick 17,0 ms, costo max 2,3 ms, fedelta' 0,5 cm / 0,6°; a METRI prima della cura 1/100 del moto. F1.9: latenza
+simulatore→xform p50 8,7 ms, p95 16,4, max 18,1. F3: 30,1 s → 723 chiavi, 0 salti Euler. 104 test fuori da Maya.
+
+**Aperto.** F2.6 (iPhone: verso del moto dal vivo, latenza telefono→viewport, rumore vero per min_cutoff), F4.5 in
+Maya (10 min), F3.4 (take dal vivo), pannello PySide6 non ancora aperto in Maya (F1.10), Swift non compilato.
+
 ### v2 — F4: pairing, Bonjour, tracking perso, Wi-Fi caduto, stress — 2026-10-15
 
 **Cosa.** `receiver`: abbinamento del mittente con PING/comando col token (TTL 3 s), pose non abbinate contate in

@@ -308,7 +308,7 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
 
 ### F1 — Lato Maya: matematica, ricezione, applicazione (verificabile su Windows col simulatore)
 
-- [ ] F1.1 **Misurare la convenzione di Maya** (3.1): in un Maya nudo, `xform(matrix=L)` con `L` = traslazione (1,2,3) in
+- [x] F1.1 **Misurare la convenzione di Maya** (3.1): in un Maya nudo, `xform(matrix=L)` con `L` = traslazione (1,2,3) in *(MISURATA 2026-10-15 in Maya 2026: A-E ✔, contrasto v1 → yaw −20; traslazione della matrice in cm interni: docs/CONVENZIONI.md)*
       12-14 e rotazione nota (yaw 20°), poi `xform -q -t` e `-q -ro`; e `MMatrix(a)*MMatrix(b)` contro numpy. Scrivere il
       comando e l'esito in `docs/CONVENZIONI.md`. **Prova**: il caso opposto (traslazione in 3,7,11) deve dare un
       risultato DIVERSO e sbagliato (contrasto). **Farm ferma, si' dell'utente, ≥5 GB su C:, ≥6 GB di commit liberi.**
@@ -335,15 +335,15 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
 - [x] F1.7 `session.py`: ancora, scala, freeze (tiene l'ultima posa applicata e al rilascio ri-ancora senza salto),
       recenter, blocchi d'asse (altezza, dolly). **Prova**: freeze → muovi il telefono 1 m → unfreeze: camera ferma,
       e il passo successivo di 10 cm da' 10 cm (contrasto: senza ri-ancoraggio salterebbe di 1 m).
-- [ ] F1.8 `maya_bridge.py`: un solo timer sul main thread (frequenza = refresh del viewport, max 60 Hz), legge l'ultima *(scritto 2026-10-15, non eseguito in Maya)*
+- [x] F1.8 `maya_bridge.py`: un solo timer sul main thread (frequenza = refresh del viewport, max 60 Hz), legge l'ultima *(misurato 2026-10-15 in Maya 2026 col simulatore 60 Hz × 60 s, cm e m: docs/MISURE.md; il contrasto a metri ha trovato il difetto delle unita')*
       posa, applica posa+lente in un `xform` + `setAttr` (focal, filmback da intrinseche), legge `currentUnit` e
       converte i metri. Niente `evalDeferred` per pacchetto. Camera scelta dall'utente, mai `modelPanel` altrui.
       **Prova dentro Maya (F1.1 condizioni)**: simulatore a 60 Hz per 60 s → profondita' coda = 0, nessun frame
       applicato fuori ordine, costo per tick misurato (`cmds.timerX`), scena in cm e in m (contrasto unita').
-- [ ] F1.9 **Prima misura dal vivo in Maya col simulatore**: latenza simulatore→camera (timestamp nel pacchetto vs
+- [x] F1.9 **Prima misura dal vivo in Maya col simulatore**: latenza simulatore→camera (timestamp nel pacchetto vs *(misurato 2026-10-15: latenza p50 8,7 ms, p95 16,4; One Euro tarato beta 10 con tests/test_filter_tuning.py; conferma su iPhone in F2.6)*
       `xform -q` sul tick), jitter, Hz effettivi; taratura del One Euro su una traiettoria registrata (si scrive PRIMA
       l'atteso: quanto ritardo si accetta, p.es. ≤ 2 frame a 60 Hz). → `docs/MISURE.md`.
-- [ ] F1.10 UI PySide6: stato (ricevo/persi/latenza/tracking), Calibra, Recenter, Freeze, scala, blocchi, camera, *(scritto 2026-10-15, non eseguito in Maya; i pulsanti chiamano Session/Bridge, che hanno i test)*
+- [ ] F1.10 UI PySide6: stato (ricevo/persi/latenza/tracking), Calibra, Recenter, Freeze, scala, blocchi, camera, *(scritto, non ancora aperto in Maya: la UI non e' nel banco MCP)*
       Rec. La UI legge uno stato, non scrive globali. **Prova**: ogni pulsante ha un test che chiama la stessa funzione
       della UI e verifica lo stato (il pulsante NON e' il test: la funzione lo e').
 - [ ] F1.11 Preferenze: un solo file, un solo scrittore, scrittura atomica (tmp + rename), tutte le chiavi.
@@ -370,7 +370,7 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
 - [x] F3.1 `takes.py`: Rec start/stop (da UI o dal telefono), campioni in memoria (t_sensor, pos, quat, lente, tracking), *(fatto 2026-10-15: `takes.py`, JSON atomico, `tests/test_takes.py`)*
       metadati (nome take, scena, fps, unita', sha app/pacchetto, device, data), salvataggio JSON della take GREZZA
       accanto alla scena (una take non si perde se Maya cade: scrittura atomica).
-- [x] F3.2 Ricampionamento agli fps della scena (interpolazione lineare pos, slerp quat, per tempo), cottura delle chiavi *(ricampionamento provato fuori da Maya: 240 chiavi, perdita 10%, fermo 3 s; `bake_take` scritto, non eseguito in Maya)*
+- [x] F3.2 Ricampionamento agli fps della scena (interpolazione lineare pos, slerp quat, per tempo), cottura delle chiavi *(fatto; misurato in Maya 2026-10-15: take 30,1 s → 723/723 chiavi, 0 salti Euler, undo in un blocco)*
       su camera e lente, dal fotogramma corrente; `undo` in un solo chunk. **Prova**: 60 Hz per 10 s su scena a 24 fps
       → 240 chiavi esatte, durata 10,00 s (contrasto: il vecchio codice darebbe 600 chiavi = 25 s); con il 10% dei
       pacchetti persi → ancora 240 chiavi, nessun buco; take in cui l'operatore sta fermo 3 s → la camera sta ferma 3 s.

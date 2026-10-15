@@ -1,18 +1,21 @@
 """Filtro One Euro (Casiez, Roussel, Vogel 2012) per posizione e quaternione.
 
 Un filtro solo, due numeri: `min_cutoff` (Hz: quanto liscia da fermo) e `beta` (quanto insegue in velocita').
-Il dt viene dal timestamp del SENSORE, non dall'orologio del PC. I valori di default sono quelli classici del paper
-e NON sono tarati su MagiCAM: la taratura e' F1.9 e si scrive in docs/MISURE.md.
+Il dt viene dal timestamp del SENSORE, non dall'orologio del PC. I default sono tarati sul simulatore (F1.9,
+tests/test_filter_tuning.py); la conferma sull'iPhone e' F2.6.
 """
 
 from __future__ import annotations
 
 import math
 
-from magicam.math3d import Quat, Vec3, quat_dot, quat_normalize
+from magicam.math3d import Quat, Vec3, quat_conj, quat_dot, quat_mul, quat_normalize
 
+# Tarati sul simulatore il 2026-10-15 (tests/test_filter_tuning.py: ritardo <= 2 cm a 0,8 m/s, <= 2 deg a 90 deg/s,
+# rumore 2 mm / 0,2 deg attenuato >= 3x). Coi valori del paper (beta 0.05) il ritardo era ~12 cm a 0,8 m/s
+# (banco F1.8 in Maya). Da confermare sull'iPhone (F2.6), dove il rumore vero di ARKit decide min_cutoff.
 DEFAULT_MIN_CUTOFF = 1.0
-DEFAULT_BETA = 0.05
+DEFAULT_BETA = 10.0
 DEFAULT_D_CUTOFF = 1.0
 
 
@@ -92,7 +95,10 @@ class OneEuroQuat:
     """One Euro sul quaternione: le 4 componenti con lo STESSO alpha (dalla velocita' angolare), poi normalizza.
 
     Prima di filtrare il campione si porta nello stesso emisfero dell'uscita precedente (q e -q sono la stessa
-    rotazione): senza, il filtro passerebbe per lo zero.
+    rotazione): senza, il filtro passerebbe per lo zero. La velocita' angolare si stima come VETTORE
+    (q_prev^-1 q ~ (omega*dt/2, 1)), filtrato per componente: le componenti hanno segno, quindi il rumore si media a
+    zero nel passa-basso invece di gonfiare il cutoff (misurato: con la norma |dq| il rumore di 0,2 deg alzava il
+    cutoff a ~3 Hz e l'attenuazione a riposo scendeva sotto 3x).
     """
 
     def __init__(
@@ -107,12 +113,12 @@ class OneEuroQuat:
         self.beta = beta
         self.d_cutoff = d_cutoff
         self._q: Quat | None = None
-        self._dq = LowPass()
+        self._omega = [LowPass(), LowPass(), LowPass()]
         self._t: float | None = None
 
     def reset(self) -> None:
         self._q = None
-        self._dq = LowPass()
+        self._omega = [LowPass(), LowPass(), LowPass()]
         self._t = None
 
     def filter(self, q: Quat, t: float) -> Quat:
@@ -126,10 +132,12 @@ class OneEuroQuat:
             q = (-q[0], -q[1], -q[2], -q[3])
         dt = t - self._t
         self._t = t
-        # velocita' angolare approssimata: 2*|q - q_prev| / dt (vale per piccoli angoli, basta per il cutoff)
-        diff = math.sqrt(sum((q[i] - self._q[i]) ** 2 for i in range(4)))
-        speed = 2.0 * diff / dt
-        espeed = self._dq.filter(speed, _alpha(self.d_cutoff, dt))
+        rel = quat_mul(quat_conj(self._q), q)
+        a_d = _alpha(self.d_cutoff, dt)
+        wx = self._omega[0].filter(2.0 * rel[0] / dt, a_d)
+        wy = self._omega[1].filter(2.0 * rel[1] / dt, a_d)
+        wz = self._omega[2].filter(2.0 * rel[2] / dt, a_d)
+        espeed = math.sqrt(wx * wx + wy * wy + wz * wz)
         a = _alpha(self.min_cutoff + self.beta * espeed, dt)
         p = self._q
         self._q = quat_normalize(
