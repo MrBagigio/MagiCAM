@@ -4,7 +4,7 @@ name: iOS (XcodeGen, build non firmata, .ipa)
 on:
   push:
     branches: [v2, main]
-    paths: ["ios/**", ".github/workflows/ios-build.yml"]
+    paths: ["ios/**"]
   workflow_dispatch:
 
 jobs:

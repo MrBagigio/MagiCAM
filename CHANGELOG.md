@@ -23,4 +23,4 @@ dall'origine + scala), con numpy come oracolo indipendente e un killer rosso che
 misurata in Maya (F1.1, aspetta il si' dell'utente con la farm ferma). `maya_bridge` e `ui` sono scritti e non
 eseguiti in Maya (F1.8-F1.10). Nessuna misura dal vivo di latenza (F1.9). Il ramo `v2` parte da `1c3ad1b` (punta
 del ramo feature) e non da `master`, diversamente dal piano F0.2: cosi' `legacy/` tiene anche i 32 commit del lavoro
-vero. Licenza da decidere (repo pubblico senza LICENSE).
+vero. Licenza da decidere (repo pubblico senza LICENSE). La CI su GitHub NON e' girata al primo push (2026-10-15 09:11 UTC, run 38711072226/537): «account locked due to a billing issue» su GitHub Actions; i quattro controlli (ruff, format, mypy, pytest) sono verdi solo in locale.

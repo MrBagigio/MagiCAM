@@ -300,7 +300,7 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
       questo documento. **Accettazione**: `git log --follow` conserva la storia.
 - [x] F0.4 `pyproject.toml` (ruff, mypy strict su `magicam/`, pytest), `pip install -e .`, pre-commit.
       **Accettazione**: `ruff check . && mypy magicam && pytest` verde su un pacchetto vuoto.
-- [ ] F0.5 CI `pytest.yml` (ubuntu, Python 3.10 e 3.11 = Maya 2024/2025) e `ios-build.yml` (macos, XcodeGen). *(scritti; verdi solo dopo il primo push su `v2`, che decide l'utente)*
+- [ ] F0.5 CI `pytest.yml` (ubuntu, Python 3.10 e 3.11 = Maya 2024/2025) e `ios-build.yml` (macos, XcodeGen). *(scritti; al primo push, 2026-10-15, GitHub Actions non ha avviato i job: account bloccato per fatturazione. Verde solo in locale finche' l'utente non sblocca l'account)*
       **Accettazione**: badge verdi sul ramo `v2` al primo push.
 - [x] F0.6 `docs/PROTOCOL.md`, `docs/CONVENZIONI.md` (vuoto, con la lista delle misure da fare), `CHANGELOG.md`,
       LICENSE (decide l'utente), README nuovo con «cosa fa OGGI» separato da «cosa fara'».
