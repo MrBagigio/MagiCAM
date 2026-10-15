@@ -3,8 +3,9 @@
 Camera virtuale: l'iPhone (ARKit) manda la sua posa a Maya via UDP e Maya la applica a una camera, con calibrazione
 su un'ancora, scala del moto, freeze e (F3) registrazione delle take agli fps della scena.
 
-**Stato (2026-10-15): fase F0+F1 — lato Maya scritto e provato FUORI da Maya col simulatore. Non ancora eseguito in
-Maya, nessuna app iOS v2 (F2).** Il POC di gennaio sta in `legacy/` ed e' superato: `docs/PIANO_DI_LAVORO.md` §2.
+**Stato (2026-10-15): F0+F1 — lato Maya scritto e provato FUORI da Maya col simulatore; F2 — app iOS SCRITTA e
+NON COMPILATA (nessun Mac qui: la compila la CI su GitHub, ferma finche' l'account Actions e' bloccato). Niente
+eseguito in Maya ne' su iPhone.** Il POC di gennaio sta in `legacy/` ed e' superato: `docs/PIANO_DI_LAVORO.md` §2.
 
 ## Cosa fa oggi (provato)
 
@@ -19,6 +20,9 @@ Maya, nessuna app iOS v2 (F2).** Il POC di gennaio sta in `legacy/` ed e' supera
 
 - `magicam.maya_bridge` (timer sul main thread, `xform` + lente) e `magicam.ui.panel`: aspettano Maya (F1.8-F1.10).
 - La convenzione della lista di `xform -matrix`: dichiarata in `docs/CONVENZIONI.md`, da misurare (F1.1).
+- `ios/`: app SwiftUI (`MagiCAM/`) + pacchetto `Packages/MagiCAMCore` (protocollo, XCTest sugli stessi vettori di
+  Python), progetto generato da XcodeGen (`ios/project.yml`). Mai compilata: lo fa `.github/workflows/ios-build.yml`
+  (`swift test`, poi build non firmata → `.ipa` da installare con AltStore).
 
 ## Provare senza Maya
 

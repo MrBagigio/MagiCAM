@@ -18,3 +18,4 @@ ios/DerivedData/
 # dati locali
 _cestino/
 *.log
+ios/MagiCAM/Info.plist

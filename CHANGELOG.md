@@ -3,6 +3,26 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — F2: app iOS scritta, non compilata — 2026-10-15
+
+**Cosa.** `ios/Packages/MagiCAMCore`: il protocollo in Swift puro (`Protocol.swift`, `PoseEncoder.swift`, byte per
+byte little-endian, niente `withUnsafeBytes` di struct) con XCTest sugli STESSI tre vettori esadecimali di
+`tests/test_protocol.py` (pose, command, stats: ora fissati anche lato Python). App `ios/MagiCAM`: `UDPLink`
+(Network.framework, riceve le stats del PC), `ARSessionManager` (OGNI frame, `frame.timestamp`, stato e ragione del
+tracking, intrinseche, esposizione; ricentra da solo quando il tracking riprende dopo una rilocalizzazione),
+`ContentView` (Avvia, Calibra, Ricentra, Freeze, Rec; a video solo i numeri del PC piu' i pacchetti spediti).
+Progetto da `ios/project.yml` (XcodeGen), Info.plist generato. CI: `swift test` del pacchetto, poi XcodeGen e build
+non firmata per `generic/platform=iOS` → `.ipa`.
+
+**Perche'.** PIANO §2: il v1 inviava solo se il telefono si muoveva (buchi), ignorava il tracking, mentiva a video
+(contatore a timer), aveva un pbxproj a mano e tre formati.
+
+**Misurato.** Niente: su questa macchina non c'e' Swift. I vettori Python sono verdi; quelli Swift li prova la CI
+(ferma: account GitHub Actions bloccato). Il codice Swift e' «scritto», non «compilato».
+
+**Aperto.** Compilazione e `swift test` in CI (F2.5); installazione con AltStore e prova dal vivo delle 6 righe della
+tabella + latenza telefono→viewport (F2.6); Bonjour (F4.2); token di pairing lato app (campo presente, sempre 0).
+
 ### v2 — F0+F1: fondamenta e lato Maya senza Maya — 2026-10-15
 
 **Cosa.** Il POC di gennaio va in `legacy/` (storia conservata, tag `legacy-2026-01`); nasce il pacchetto `magicam`:

@@ -351,14 +351,14 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
 
 ### F2 — App iOS minima (Mac non necessario)
 
-- [ ] F2.1 `ios/project.yml` (XcodeGen), target iOS 15+, solo i 4-5 file Swift; `ARKitSender.swift` legacy fuori.
-- [ ] F2.2 `PoseEncoder.swift`: pacchetto di 6 (`struct` → `Data`, little-endian). **Prova**: test XCTest con vettore
+- [x] F2.1 `ios/project.yml` (XcodeGen), target iOS 15+, solo i 4-5 file Swift; `ARKitSender.swift` legacy fuori. *(scritto 2026-10-15: `ios/project.yml`; non generato ne' compilato qui)*
+- [x] F2.2 `PoseEncoder.swift`: pacchetto di 6 (`struct` → `Data`, little-endian). **Prova**: test XCTest con vettore *(scritto: `Packages/MagiCAMCore`, XCTest sui 3 vettori di Python; `swift test` solo in CI)*
       esadecimale noto condiviso con `tests/test_protocol.py` (lo stesso byte-array in entrambi).
-- [ ] F2.3 `ARSessionManager`: invia OGNI frame (niente soglie), `t_sensor = frame.timestamp`, tracking state,
+- [x] F2.3 `ARSessionManager`: invia OGNI frame (niente soglie), `t_sensor = frame.timestamp`, tracking state, *(scritto, non compilato)*
       intrinseche; `worldAlignment = .gravity`; riavvio tracking → comando `recenter` automatico con avviso.
-- [ ] F2.4 Riscrivere la vista principale: host/porta (o Bonjour), Start/Stop, Calibra, Freeze, Rec, statistiche VERE
+- [x] F2.4 Riscrivere la vista principale: host/porta (o Bonjour), Start/Stop, Calibra, Freeze, Rec, statistiche VERE *(scritto, non compilato; Bonjour rimandato a F4.2)*
       dal messaggio `stats` del PC (C3 muore). ≤ 300 righe per file.
-- [ ] F2.5 CI iOS: XcodeGen + `xcodebuild CODE_SIGNING_ALLOWED=NO` → `.ipa` artifact. **Accettazione**: verde, e il log
+- [x] F2.5 CI iOS: XcodeGen + `xcodebuild CODE_SIGNING_ALLOWED=NO` → `.ipa` artifact. **Accettazione**: verde, e il log *(workflow scritto; verde solo quando l'utente sblocca GitHub Actions)*
       si legge. Installazione via AltStore (Windows) provata dall'utente.
 - [ ] F2.6 **Prima misura dal vivo con l'iPhone**: le 6 righe della tabella F1 fatte a mano (telefono su un tavolo, segni
       a 10 cm; giro a vista) → la camera di Maya si muove nel verso e nella misura attesi, con ancora all'origine E con

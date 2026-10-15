@@ -1,7 +1,9 @@
 # Protocollo MagiCAM v2 (UDP, binario, little-endian)
 
 Versione del protocollo: **2**. Un datagramma = un messaggio. Il codice di riferimento e' `magicam/protocol.py`;
-l'encoder Swift (F2) deve riprodurre byte per byte i vettori di prova in `tests/test_protocol.py` (`VETTORI_NOTI`).
+l'encoder Swift e' `ios/Packages/MagiCAMCore` (`PoseEncoder.swift`) e riproduce byte per byte i tre vettori di
+`tests/test_protocol.py` (`VETTORI_NOTI`: pose, command, stats) in `PoseEncoderTests.swift`. Chi cambia un campo
+cambia i vettori in TUTTI E DUE i test, nello stesso commit.
 
 ## Header (20 byte, comune)
 

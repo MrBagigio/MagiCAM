@@ -1,0 +1,53 @@
+# XcodeGen: `cd ios && xcodegen generate` produce MagiCAM.xcodeproj (non versionato). Niente pbxproj a mano.
+name: MagiCAM
+options:
+  bundleIdPrefix: com.setpointstudio
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+
+packages:
+  MagiCAMCore:
+    path: Packages/MagiCAMCore
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "2.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+
+targets:
+  MagiCAM:
+    type: application
+    platform: iOS
+    sources:
+      - path: MagiCAM
+    dependencies:
+      - package: MagiCAMCore
+    info:
+      path: MagiCAM/Info.plist
+      properties:
+        CFBundleDisplayName: MagiCAM
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIRequiredDeviceCapabilities: [arkit, arm64]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: MagiCAM usa la fotocamera per il tracking AR e manda la posa del telefono a Maya.
+        NSLocalNetworkUsageDescription: MagiCAM manda la posa della camera al computer con Maya sulla rete locale.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.setpointstudio.magicam
+        GENERATE_INFOPLIST_FILE: false
+        # build non firmata in CI; su Mac con team si rimette la firma automatica
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        DEVELOPMENT_TEAM: ""

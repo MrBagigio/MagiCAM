@@ -44,6 +44,10 @@ VETTORI_NOTI = {
         "3804"
         "00000000"
     ),
+    # seq 3, t 2.0; cmd scale_set(7); token 0xDEADBEEF; value 0.1
+    "command": bytes.fromhex("4d474332020002000300000000000000000000400700efbeaddecdcccc3d"),
+    # seq 1, t 3.0; received 600; lost 12; latency 18.5; flags 0b1011
+    "stats": bytes.fromhex("4d47433202000300010000000000000000000840580200000c000000000094410b"),
 }
 
 
@@ -86,6 +90,7 @@ def test_pose_roundtrip_f32_precision():
 
 def test_command_roundtrip():
     m = CommandMessage(3, 2.0, Command.SCALE_SET, token=0xDEADBEEF, value=0.1)
+    assert protocol.pack(m) == VETTORI_NOTI["command"]
     back = protocol.unpack(protocol.pack(m))
     assert isinstance(back, CommandMessage)
     assert back.cmd is Command.SCALE_SET and back.token == 0xDEADBEEF
@@ -94,6 +99,7 @@ def test_command_roundtrip():
 
 def test_stats_roundtrip():
     m = StatsMessage(1, 3.0, received=600, lost=12, latency_ms=18.5, flags=0b1011)
+    assert protocol.pack(m) == VETTORI_NOTI["stats"]
     back = protocol.unpack(protocol.pack(m))
     assert isinstance(back, StatsMessage)
     assert (back.received, back.lost, back.flags) == (600, 12, 0b1011)
