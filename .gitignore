@@ -1,36 +1,20 @@
-# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Distribution / packaging
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
 build/
 dist/
-*.egg-info/
-*.egg
-
-# macOS
-.DS_Store
-
-# Xcode
-*.xcworkspace
-xcuserdata/
-DerivedData/
-
-# IDEs
-.vscode/
-.idea/
-
-# Python virtual env
+.venv/
 venv/
-ENV/
 
-# Archives
-*.zip
+# iOS
+ios/*.xcodeproj/
+ios/DerivedData/
 *.ipa
+*.xcarchive
 
-# Logs
+# dati locali
+_cestino/
 *.log
-
-# Temporary
-*.tmp

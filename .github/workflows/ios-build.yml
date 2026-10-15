@@ -1,0 +1,42 @@
+name: iOS (XcodeGen, build non firmata, .ipa)
+
+# Parte solo quando esiste ios/project.yml (fase F2). Fino ad allora il filtro sui percorsi lo tiene fermo.
+on:
+  push:
+    branches: [v2, main]
+    paths: ["ios/**", ".github/workflows/ios-build.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen
+        run: |
+          set -e
+          test -f ios/project.yml || { echo "ios/project.yml assente: fase F2 non ancora fatta"; exit 1; }
+          brew install xcodegen
+          cd ios && xcodegen generate
+      - name: Build non firmata
+        run: |
+          set -e
+          cd ios
+          xcodebuild -project MagiCAM.xcodeproj -scheme MagiCAM -configuration Release -sdk iphoneos \
+            SYMROOT=build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee ../xcodebuild.log
+      - name: Impacchetta .ipa
+        run: |
+          set -e
+          mkdir -p Payload
+          cp -R ios/build/Release-iphoneos/MagiCAM.app Payload/
+          zip -qr MagiCAM-unsigned.ipa Payload
+          ls -la MagiCAM-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MagiCAM-unsigned-ipa
+          path: MagiCAM-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log

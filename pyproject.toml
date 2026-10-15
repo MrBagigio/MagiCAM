@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "magicam"
+version = "2.0.0a0"
+description = "Camera virtuale: iPhone (ARKit) -> UDP -> Maya, con calibrazione, filtro e take"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10", "numpy>=1.24", "pre-commit>=3"]
+
+[project.scripts]
+magicam-sim = "magicam.simulator:main"
+
+[tool.setuptools.packages.find]
+include = ["magicam*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -ra"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "BLE", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["magicam"]
+exclude = ["legacy"]
+
+[[tool.mypy.overrides]]
+module = ["maya.*", "maya", "PySide6", "PySide6.*", "PySide2", "PySide2.*", "shiboken6", "shiboken2"]
+ignore_missing_imports = true
