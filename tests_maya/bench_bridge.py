@@ -28,6 +28,10 @@ STATE: dict = {}
 def setup(unit: str = "cm", tick_hz: float = 60.0, filter_on: bool = True, port: int = 9000) -> dict:
     teardown()
     found_unit = cmds.currentUnit(q=True, linear=True)  # C3: chi cambia uno stato lo rimette al valore TROVATO
+    # Regola 8: la scena e' dell'utente. Il banco apre una scena nuova SOLO se quella aperta e' «untitled» e senza
+    # modifiche; altrimenti si ferma e lo dice (il primo banco faceva file -new -force senza guardare).
+    if cmds.file(q=True, sceneName=True) or cmds.file(q=True, modified=True):
+        raise RuntimeError("scena aperta con nome o con modifiche: salva/chiudi tu, il banco non la butta")
     cmds.file(new=True, force=True)
     cmds.currentUnit(linear=unit)
     STATE["found_unit"] = found_unit
@@ -100,17 +104,64 @@ def rec_stop() -> dict:
     return {"samples": n_before, "path": str(path)}
 
 
-def bake_last_take() -> dict:
-    """Si chiama a bridge FERMO (dopo stop()), cosi' il tick non sovrascrive i canali animati."""
-    from magicam.takes import load_take
+def _bake_slow(b: MayaCameraBridge, take, cam: str, keys) -> int:
+    """Il PRIMO bake (xform + setKeyframe per fotogramma + filterCurve), tenuto qui solo per misurarne la scala:
+    su 14401 chiavi non finiva piu' (F4.5, 2026-10-15). Il prodotto usa MFnAnimCurve.addKeys."""
+    from magicam.math3d import to_maya_matrix
+
+    cmds.undoInfo(openChunk=True, chunkName="MagiCAM take (slow)")
+    try:
+        for k in keys:
+            cmds.xform(cam, ws=True, matrix=to_maya_matrix(k.camera, b._unit))
+            cmds.setKeyframe(cam, attribute=["translate", "rotate"], time=k.frame)
+        cmds.filterCurve(f"{cam}.rotateX", f"{cam}.rotateY", f"{cam}.rotateZ")
+    finally:
+        cmds.undoInfo(closeChunk=True)
+    return len(keys)
+
+
+def clear_camera_anim() -> dict:
+    cam = STATE["cam"]
+    curves = cmds.listConnections(cam, type="animCurve") or []
+    shapes = cmds.listRelatives(cam, shapes=True) or []
+    for s in shapes:
+        curves += cmds.listConnections(s, type="animCurve") or []
+    if curves:
+        cmds.delete(curves)
+    return {"deleted_curves": len(curves)}
+
+
+def bake_last_take(method: str = "api", max_seconds: float | None = None, take_path: str | None = None) -> dict:
+    """Si chiama a bridge FERMO (dopo stop()), cosi' il tick non sovrascrive i canali animati.
+
+    method: "api" (prodotto: MFnAnimCurve.addKeys) o "slow" (il primo bake, per la misura di scala);
+    max_seconds: tronca la take ai primi N secondi (misure a 1000/2000/4000 chiavi).
+    """
+    from dataclasses import replace
+
+    from magicam.takes import load_take, resample
 
     b: MayaCameraBridge = STATE["bridge"]
-    take = load_take(Path(STATE["take_path"]))
+    take = load_take(Path(take_path or STATE["take_path"]))
+    if max_seconds is not None:
+        t0s = take.samples[0].t
+        take = replace(take, samples=tuple(s for s in take.samples if s.t - t0s <= max_seconds))
     cam = STATE["cam"]
+    clear_camera_anim()
     cmds.currentTime(1)
     t0 = time.perf_counter()
-    n = b.bake_take(take, start_frame=1)
+    if method == "slow":
+        n = _bake_slow(b, take, cam, resample(take, b.scene_fps(), 1))
+    else:
+        n = b.bake_take(take, start_frame=1)
     dt = time.perf_counter() - t0
+    # verifica a campione: la chiave a meta' deve riprodurre la posa ricampionata (posizione in unita' UI)
+    keys = resample(take, b.scene_fps(), 1)
+    mid = keys[len(keys) // 2]
+    cmds.currentTime(mid.frame)
+    pos_ui = cmds.xform(cam, q=True, ws=True, t=True)
+    exp_ui = [c * STATE["upm"] for c in mid.camera.pos]
+    mid_err_units = max(abs(a - e) for a, e in zip(pos_ui, exp_ui, strict=True))
     fps = b.scene_fps()
     counts = {a: cmds.keyframe(f"{cam}.{a}", q=True, keyframeCount=True) for a in ("translateX", "rotateY")}
     times = cmds.keyframe(f"{cam}.translateX", q=True, timeChange=True) or []
@@ -128,6 +179,8 @@ def bake_last_take() -> dict:
         "last_frame": times[-1] if times else None,
         "euler_jumps_over_180": jumps,
         "bake_s": dt,
+        "method": method,
+        "mid_key_pos_err_units": mid_err_units,
         "undo_name": cmds.undoInfo(q=True, undoName=True),
     }
     STATE["bake"] = out

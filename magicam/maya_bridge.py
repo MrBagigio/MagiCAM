@@ -7,6 +7,7 @@ SCRITTO, NON ESEGUITO IN MAYA (F1.8): misure di coda e costo per tick da fare co
 from __future__ import annotations
 
 import logging
+import math
 import secrets
 import time
 from collections import deque
@@ -21,7 +22,15 @@ from magicam.math3d import Transform, from_maya_matrix, to_maya_matrix
 from magicam.protocol import Command, CommandMessage, PoseMessage, StatsFlag, StatsMessage
 from magicam.receiver import Receiver
 from magicam.session import Hold, Session
-from magicam.takes import Take, TakeLibrary, TakeRecorder, default_take_folder, fps_from_maya_time_unit, resample
+from magicam.takes import (
+    Take,
+    TakeLibrary,
+    TakeRecorder,
+    channel_curves,
+    default_take_folder,
+    fps_from_maya_time_unit,
+    resample,
+)
 
 log = logging.getLogger("magicam.maya_bridge")
 
@@ -320,20 +329,86 @@ class MayaCameraBridge:
         shape = str(shapes[0]) if shapes else None
         hfa_in = float(cmds.getAttr(f"{shape}.horizontalFilmAperture")) if shape else 0.0
         image_w = next((s.image_w for s in take.samples if s.image_w > 0), 0)
+        focal_scale = (hfa_in * 25.4 / image_w) if (self.drive_lens and shape and image_w > 0) else None
+        rotate_order = int(cmds.getAttr(f"{cam}.rotateOrder"))
+        curves = channel_curves(keys, self._unit, focal_scale)
+        if rotate_order != 0:
+            curves = self._reorder_euler(curves, rotate_order)
+        # Le chiavi si scrivono IN BLOCCO con l'API (MFnAnimCurve.addKeys): il primo bake faceva xform + setKeyframe
+        # per fotogramma e su 14401 chiavi non finiva piu' (F4.5, 2026-10-15). Le curve NUOVE nascono dentro un
+        # blocco di undo (createNode + connectAttr), quindi l'undo le toglie con tutte le chiavi; su una curva che
+        # esisteva gia' le chiavi aggiunte dall'API NON sono annullabili: lo si dice nel log.
         cmds.undoInfo(openChunk=True, chunkName="MagiCAM take")
         try:
-            for k in keys:
-                cmds.xform(cam, ws=True, matrix=to_maya_matrix(k.camera, self._unit))
-                cmds.setKeyframe(cam, attribute=["translate", "rotate"], time=k.frame)
-                if self.drive_lens and shape and k.focal_px > 0 and image_w > 0:
-                    focal_mm = k.focal_px * hfa_in * 25.4 / image_w
-                    cmds.setKeyframe(shape, attribute="focalLength", time=k.frame, value=focal_mm)
-            # continuita' degli Euler fra fotogrammi (xform puo' saltare da -179 a +179)
-            cmds.filterCurve(f"{cam}.rotateX", f"{cam}.rotateY", f"{cam}.rotateZ")
+            for attr, values in curves.items():
+                node, plug = (shape, "focalLength") if attr == "focalLength" else (cam, attr)
+                if node is None:
+                    continue
+                self._write_curve(f"{node}.{plug}", attr, [k.frame for k in keys], values)
         finally:
             cmds.undoInfo(closeChunk=True)
-        log.info("take «%s»: %d chiavi a %.3f fps da %d", take.name, len(keys), fps, start)
+        log.info("take «%s»: %d chiavi a %.3f fps da %d (%d curve)", take.name, len(keys), fps, start, len(curves))
         return len(keys)
+
+    @staticmethod
+    def _reorder_euler(curves: dict[str, list[float]], rotate_order: int) -> dict[str, list[float]]:
+        """Da XYZ (gradi) all'ordine di rotazione della camera, con l'API; poi di nuovo continui."""
+        import maya.api.OpenMaya as om  # noqa: N813 - alias di uso comune in Maya
+
+        from magicam.takes import euler_unwrap_deg
+
+        rx, ry, rz = curves["rotateX"], curves["rotateY"], curves["rotateZ"]
+        out_x: list[float] = []
+        out_y: list[float] = []
+        out_z: list[float] = []
+        for x, y, z in zip(rx, ry, rz, strict=True):
+            e = om.MEulerRotation(math.radians(x), math.radians(y), math.radians(z), om.MEulerRotation.kXYZ)
+            r = e.reorder(rotate_order)
+            out_x.append(math.degrees(r.x))
+            out_y.append(math.degrees(r.y))
+            out_z.append(math.degrees(r.z))
+        new = dict(curves)
+        new["rotateX"], new["rotateY"], new["rotateZ"] = (
+            euler_unwrap_deg(out_x),
+            euler_unwrap_deg(out_y),
+            euler_unwrap_deg(out_z),
+        )
+        return new
+
+    def _write_curve(self, plug_name: str, attr: str, frames: list[int], values: list[float]) -> None:
+        import maya.api.OpenMaya as om  # noqa: N813 - alias di uso comune in Maya
+        import maya.api.OpenMayaAnim as oma  # noqa: N813
+
+        cmds = _cmds()
+        sel = om.MSelectionList()
+        sel.add(plug_name)
+        plug = sel.getPlug(0)
+        if plug.isDestination:
+            src = plug.source().node()
+            if not src.hasFn(om.MFn.kAnimCurve):
+                raise RuntimeError(f"{plug_name} e' pilotato da un nodo che non e' una curva: non ci cuocio sopra")
+            fn = oma.MFnAnimCurve(src)
+            log.warning("%s: curva esistente, le chiavi aggiunte non sono annullabili con undo", plug_name)
+        else:
+            curve_type = (
+                "animCurveTA"
+                if attr.startswith("rotate")
+                else "animCurveTL"
+                if attr.startswith("translate")
+                else "animCurveTU"
+            )
+            node = cmds.createNode(curve_type, name=f"{plug_name.replace('.', '_')}_magicam")
+            cmds.connectAttr(f"{node}.output", plug_name)
+            sel2 = om.MSelectionList()
+            sel2.add(node)
+            fn = oma.MFnAnimCurve(sel2.getDependNode(0))
+        unit = om.MTime.uiUnit()
+        times = om.MTimeArray([om.MTime(float(f), unit) for f in frames])
+        if attr.startswith("rotate"):
+            vals = om.MDoubleArray([math.radians(v) for v in values])  # animCurveTA: radianti interni
+        else:
+            vals = om.MDoubleArray(values)
+        fn.addKeys(times, vals, oma.MFnAnimCurve.kTangentGlobal, oma.MFnAnimCurve.kTangentGlobal, True)
 
     def camera_world(self) -> Transform:
         m = list(_cmds().xform(self.camera, q=True, ws=True, matrix=True))

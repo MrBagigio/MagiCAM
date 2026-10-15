@@ -10,6 +10,7 @@ Niente si cancella: `TakeLibrary.discard` sposta in `_cestino/`.
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import os
@@ -24,7 +25,7 @@ from itertools import pairwise
 from pathlib import Path
 
 from magicam import PROTOCOL_VERSION, __version__
-from magicam.math3d import Transform, quat_slerp, vec_lerp
+from magicam.math3d import Transform, quat_slerp, quat_to_euler_xyz_deg, vec_lerp
 from magicam.protocol import PoseMessage
 
 TAKE_FORMAT = 1
@@ -313,6 +314,73 @@ def default_take_folder(scene_path: str | None, home: Path | None = None) -> Pat
     if scene_path:
         return Path(scene_path).resolve().parent / "magicam_takes"
     return (home or Path.home()) / "Documents" / "magicam_takes"
+
+
+def _nearest_turn(a: float, prev: float) -> float:
+    """`a` spostato di multipli di 360 per stare entro 180 da `prev`."""
+    return a - 360.0 * round((a - prev) / 360.0)
+
+
+def _euler_distance(c: tuple[float, float, float], prev: tuple[float, float, float]) -> float:
+    """Somma dei salti (gradi) fra una terna candidata e la precedente, ogni asse al giro piu' vicino."""
+    return sum(abs(_nearest_turn(v, p) - p) for v, p in zip(c, prev, strict=True))
+
+
+def euler_unwrap_deg(angles: Sequence[float]) -> list[float]:
+    """Angoli in gradi resi CONTINUI: ogni valore si sposta di multipli di 360 per stare entro 180 dal precedente.
+
+    Le curve di Maya interpolano i numeri, non le rotazioni: −179 → +179 sarebbe un giro intero in un fotogramma.
+    """
+    out: list[float] = []
+    for a in angles:
+        if out:
+            prev = out[-1]
+            a = a - 360.0 * round((a - prev) / 360.0)
+        out.append(a)
+    return out
+
+
+def channel_curves(
+    keys: Sequence[Keyframe], unit_per_meter: float, focal_scale_mm_per_px: float | None = None
+) -> dict[str, list[float]]:
+    """Dalle chiavi ai valori per canale di Maya: translate (unita' interne), rotate XYZ (gradi, continui),
+    focalLength (mm) se c'e' la scala focale. Python puro: la scrittura in blocco la fa maya_bridge."""
+    tx: list[float] = []
+    ty: list[float] = []
+    tz: list[float] = []
+    rx: list[float] = []
+    ry: list[float] = []
+    rz: list[float] = []
+    focal: list[float] = []
+    for k in keys:
+        px, py, pz = k.camera.pos
+        tx.append(px * unit_per_meter)
+        ty.append(py * unit_per_meter)
+        tz.append(pz * unit_per_meter)
+        # Due terne XYZ danno la stessa rotazione: (x, y, z) e (x+180, 180−y, z+180). Si sceglie quella piu' vicina
+        # alla chiave precedente (come l'Euler filter di Maya), altrimenti uno yaw che passa 90° fa saltare x e z a 180.
+        ex, ey, ez = quat_to_euler_xyz_deg(k.camera.quat)
+        candidates = ((ex, ey, ez), (ex + 180.0, 180.0 - ey, ez + 180.0))
+        if rx:
+            prev = (rx[-1], ry[-1], rz[-1])
+            ex, ey, ez = min(candidates, key=functools.partial(_euler_distance, prev=prev))
+            ex, ey, ez = _nearest_turn(ex, prev[0]), _nearest_turn(ey, prev[1]), _nearest_turn(ez, prev[2])
+        rx.append(ex)
+        ry.append(ey)
+        rz.append(ez)
+        if focal_scale_mm_per_px is not None:
+            focal.append(k.focal_px * focal_scale_mm_per_px)
+    curves = {
+        "translateX": tx,
+        "translateY": ty,
+        "translateZ": tz,
+        "rotateX": rx,  # gia' continui: scelta del candidato + giro piu' vicino, chiave per chiave
+        "rotateY": ry,
+        "rotateZ": rz,
+    }
+    if focal_scale_mm_per_px is not None and any(f > 0 for f in focal):
+        curves["focalLength"] = focal
+    return curves
 
 
 def iter_frames(keys: Iterable[Keyframe]) -> Iterable[int]:
