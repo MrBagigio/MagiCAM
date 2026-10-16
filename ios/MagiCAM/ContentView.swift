@@ -21,16 +21,89 @@ struct ContentView: View {
 
     var body: some View {
         NavigationView {
-            Form {
-                connectionSection
-                cameraSection
-                statusSection
+            VStack(spacing: 8) {
+                // R4: stato e Rec grandi in cima, leggibili col telefono in mano a braccio teso
+                liveBanner
+                bigRecButton
+                Form {
+                    connectionSection
+                    cameraSection
+                    statusSection
+                }
             }
             .navigationTitle("MagiCAM")
+            .navigationBarTitleDisplayMode(.inline)
         }
         .navigationViewStyle(.stack)
         .onAppear { browser.start() }
         .onDisappear { browser.stop() }
+    }
+
+    // MARK: - R4: banner e Rec da ripresa
+
+    private var live: LiveStatus {
+        var normal = false
+        if case .normal = manager.tracking { normal = true }
+        return LiveStatus.evaluate(
+            running: manager.isRunning,
+            link: manager.linkState,
+            stats: manager.stats,
+            statsAge: manager.statsAge,
+            trackingNormal: normal,
+            thermal: manager.thermal
+        )
+    }
+
+    private func color(_ level: LiveLevel) -> Color {
+        switch level {
+        case .off: return Color(.systemGray)
+        case .ok: return Color(red: 0.16, green: 0.72, blue: 0.38)
+        case .warn: return Color(red: 0.95, green: 0.58, blue: 0.15)
+        case .bad: return Color(red: 0.90, green: 0.22, blue: 0.18)
+        }
+    }
+
+    private var liveBanner: some View {
+        let s = live
+        return VStack(spacing: 2) {
+            Text(s.title)
+                .font(.system(size: 26, weight: .heavy, design: .rounded))
+                .minimumScaleFactor(0.6)
+                .lineLimit(1)
+            Text(s.detail)
+                .font(.system(.subheadline, design: .monospaced))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .foregroundColor(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(color(s.level))
+        .cornerRadius(14)
+        .padding(.horizontal)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var bigRecButton: some View {
+        Button {
+            recordingRequested = !recording
+            command(recordingRequested ? .recStart : .recStop)
+        } label: {
+            Text(recording ? "■  STOP TAKE" : "●  REC")
+                .font(.system(size: 28, weight: .black, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 64)
+                .foregroundColor(.white)
+                .background(recording ? Color.red : Color(red: 0.35, green: 0.12, blue: 0.12))
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(recording ? Color.white : Color.red, lineWidth: recording ? 3 : 1.5)
+                )
+        }
+        .padding(.horizontal)
+        .disabled(!manager.isRunning)
+        .opacity(manager.isRunning ? 1 : 0.4)
     }
 
     // MARK: - sezioni
@@ -93,14 +166,6 @@ struct ContentView: View {
                 .tint(frozen ? .orange : .accentColor)
             }
             .buttonStyle(.bordered)
-            .disabled(!manager.isRunning)
-
-            Button(recording ? "Stop take" : "Rec take") {
-                recordingRequested = !recording
-                command(recordingRequested ? .recStart : .recStop)
-            }
-            .buttonStyle(.bordered)
-            .tint(recording ? .red : .accentColor)
             .disabled(!manager.isRunning)
 
             VStack(alignment: .leading, spacing: 4) {

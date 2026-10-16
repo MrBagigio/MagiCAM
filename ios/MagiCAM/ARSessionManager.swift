@@ -7,9 +7,20 @@ import Combine
 import Foundation
 import MagiCAMCore
 import Network
+import UIKit
 
 final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
-    @Published var isRunning = false
+    /// R4: mentre trasmette, il blocco automatico dello schermo e' spento. Prima l'app non lo toccava: tenendo il
+    /// telefono senza toccare lo schermo, allo scadere del blocco l'app andava in sottofondo e ARKit si fermava.
+    @Published var isRunning = false {
+        didSet {
+            let on = isRunning
+            DispatchQueue.main.async { UIApplication.shared.isIdleTimerDisabled = on }
+        }
+    }
+
+    /// R4: `ProcessInfo.ThermalState.rawValue` (0 nominale … 3 critico): il banner avvisa prima che iOS rallenti.
+    @Published var thermal: Int = ProcessInfo.processInfo.thermalState.rawValue
     @Published var linkState: UDPLink.State = .idle
     @Published var framesSent: UInt32 = 0
     @Published var tracking: ARCamera.TrackingState = .notAvailable
@@ -47,6 +58,11 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         // `connect` veniva scartato (link non pronto) e le prime pose arrivavano «non abbinate» (31 il 2026-10-16).
         link.greeting = { [weak self] in
             self?.commandData(.ping) ?? Data()
+        }
+        NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.thermal = ProcessInfo.processInfo.thermalState.rawValue
         }
     }
 

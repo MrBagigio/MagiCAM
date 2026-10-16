@@ -3,6 +3,22 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — Regia dal vivo R4: iPhone da ripresa — 2026-10-16
+
+**Cosa.** (1) Mentre trasmette, l'app spegne il blocco automatico dello schermo (`isIdleTimerDisabled`, rimesso
+quando si ferma): prima non lo toccava, e tenendo il telefono senza toccarlo l'app andava in sottofondo allo scadere
+del blocco. (2) In cima alla vista, un banner grande colorato e un pulsante REC grande (64 pt): il banner lo decide
+`LiveStatus` in MagiCAMCore (Swift puro, con test) solo da cio' che il PC CONFERMA con le sue stats — verde «DAL VIVO»
+solo con stats fresche (< 3 s), calibrata, tracking normale, senza freeze; rosso «MAYA NON RISPONDE» senza stats,
+anche se la rete UDP e' «pronta» (quindi anche quando il ponte in Maya si ferma per un guasto R3). (3) Stato termico:
+«caldo» arancio, «critico» rosso con l'invito a fermarsi.
+
+**Misurato.** Niente sul telefono ancora. `LiveStatusTests` (4 test, ogni stato contro il suo opposto) e la build:
+vedi il run CI del commit.
+
+**Aperto.** Da provare sul telefono: lo schermo resta acceso oltre il blocco automatico; il banner passa a rosso
+quando si ferma il pannello in Maya. Installazione con Sideloadly (PC sull'hotspot, Surfshark spento).
+
 ### v2 — Regia dal vivo R1-R3: take sulla timeline, una camera per take, guasti che si dicono — 2026-10-16
 
 **Cosa.** Dai quattro bloccanti misurati in docs/VALUTAZIONE_REGIA_LIVE.md. **R1** il tick scrive nel campione il
