@@ -3,6 +3,25 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — Pannello rifatto, icona e pulsante nella shelf — 2026-10-16
+
+**Cosa.** `magicam/ui/panel.py` riscritto: sezioni Collegamento / Camera / Take / Dal telefono, spia colorata dello
+stato visto dal PC (fermo, in attesa del telefono, collegato ma da calibrare, dal vivo a N Hz, FREEZE, tracking non
+normale, COLLEGAMENTO PERSO), IP del PC da scrivere sull'app, codice grande, elenco delle camere della scena con
+«Nuova» e «Guarda», pose al secondo calcolate dai contatori veri, stato del tracking dell'ultima posa, take avviata
+dal telefono mostrata anche nel pannello. Stesse funzioni di bridge e sessione di prima. Corretto anche il silenzio
+del collegamento: il pannello lo misurava con `time.monotonic` contro un istante del ricevitore preso con
+`perf_counter` (orologi diversi, numero senza senso). Nuovi `magicam/ui/icons/magicam_shelf.svg` e
+`magicam/ui/shelf.py` (`install("Custom")`: copia l'icona tra le icone di Maya, pulsante idempotente, salva SOLO
+quella shelf dopo una copia `shelf_Custom.mel.bak_magicam_<data>`).
+
+**Misurato.** In Maya 2026 dell'utente: pannello aperto, pulsante sulla shelf Custom, file salvato con 6 pulsanti
+(i 5 di prima + MagiCAM, diff col backup = solo il blocco nuovo). Difetto trovato rileggendo il file: il pulsante
+creato con la scheda non in vista era salvato con `-visible 0` (al riavvio sarebbe sparito); dopo la cura
+(`visible=True` e scheda mostrata prima di `saveShelf`) `-visible 1`, e `install` ora rilegge il file e si ferma se
+il blocco dice `-visible 0`. Il riavvio di Maya col pulsante non e' ancora stato provato. Il pannello nuovo non e'
+ancora stato usato con il telefono collegato.
+
 ### v2 — iPhone: formato video a fps massimi e PING alla connessione pronta — 2026-10-16
 
 **Cosa.** Due correzioni nate dal primo collegamento dal vivo (docs/MISURE.md, F2.6). (1) `ARSessionManager.start`

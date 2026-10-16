@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#18222b"/>
+      <stop offset="1" stop-color="#090d11"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#fondo)" stroke="#1fb8ad" stroke-width="1"/>
+  <!-- onde del segnale: il telefono che trasmette -->
+  <path d="M19.2 9.6 A3.2 3.2 0 0 1 22.4 6.4" fill="none" stroke="#1fd8c9" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M16.4 9.6 A6 6 0 0 1 22.4 3.6" fill="none" stroke="#1fd8c9" stroke-opacity="0.55" stroke-width="1.6" stroke-linecap="round"/>
+  <circle cx="22.4" cy="9.6" r="1.4" fill="#1fd8c9"/>
+  <!-- corpo della videocamera -->
+  <rect x="4.5" y="13" width="16" height="12" rx="2.4" fill="#1fd8c9" fill-opacity="0.16" stroke="#e9fbf9" stroke-width="1.6"/>
+  <path d="M20.5 17.2 L27.5 13.8 V24.2 L20.5 20.8 Z" fill="#e9fbf9" fill-opacity="0.9"/>
+  <!-- il punto della registrazione -->
+  <circle cx="8.6" cy="16.9" r="1.9" fill="#ff4d3d"/>
+</svg>
