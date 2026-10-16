@@ -69,3 +69,11 @@ iOS) e dimostrato in Maya 2026 i rischi che toccano una ripresa, con il simulato
 | R7 | **Misure sul telefono**: fps del formato nuovo, latenza con riferimento comune, rumore da fermo per il filtro | 10, 11 |
 
 R1, R2 e R3 insieme sono il minimo per una sessione di regia vera.
+
+## Stato
+
+- **R1, R2, R3 fatti il 2026-10-16** e rimisurati con lo stesso banco: chiavi sui fotogrammi visti (0-74), testina
+  spostata a mano → a tempo dal Rec, camera dal vivo senza curve (0,0 cm), camera con chiavi rifiutata, camera
+  cancellata → 1 errore invece di 59 al secondo (docs/MISURE.md, CHANGELOG). Resta da provare la scena nuova in una
+  scena vuota e tutto col telefono vero sopra un'animazione.
+- R4-R7 da fare.

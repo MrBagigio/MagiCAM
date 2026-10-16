@@ -29,7 +29,7 @@ except ImportError:  # Maya 2024
 
 _PANEL: MagiCamPanel | None = None
 
-DEFAULT_CAMERA = "magicam_cam1"
+DEFAULT_CAMERA = "magicam_live"  # R2: la camera che il telefono muove; le take vanno su camere loro
 _BUILTIN_CAMERAS = {"persp", "top", "front", "side"}
 
 # colori della spia: un solo posto, letti anche dallo stile
@@ -176,6 +176,8 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         head.addWidget(title)
         head.addStretch(1)
         self.pill = QtWidgets.QLabel("fermo")
+        self.pill.setWordWrap(True)  # un guasto lungo va a capo invece di allargare la finestra
+        self.pill.setMaximumWidth(300)
         self.pill.setObjectName("pill")
         head.addWidget(self.pill)
         lay.addLayout(head)
@@ -188,7 +190,10 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         form.addWidget(QtWidgets.QLabel("Camera"), 0, 0)
         self.camera_combo = QtWidgets.QComboBox()
         self.camera_combo.setEditable(True)
-        self.camera_combo.setToolTip("La camera di Maya che il telefono muove")
+        self.camera_combo.setToolTip(
+            "La camera DAL VIVO che il telefono muove: senza chiavi. Ogni take si cuoce su una camera nuova "
+            "nel gruppo magicam_takes_grp."
+        )
         form.addWidget(self.camera_combo, 0, 1)
         cam_btns = QtWidgets.QHBoxLayout()
         self.new_cam_btn = QtWidgets.QPushButton("Nuova")
@@ -289,15 +294,22 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         self.rec_btn.setMinimumWidth(110)
         self.rec_btn.clicked.connect(self._toggle_rec)
         tl.addWidget(self.rec_btn, 0, 1)
-        self.bake_chk = QtWidgets.QCheckBox("Chiavi sulla camera allo stop")
+        self.timeline_chk = QtWidgets.QCheckBox("Rec fa partire la timeline (dall'inizio, tempo reale)")
+        self.timeline_chk.setChecked(True)
+        self.timeline_chk.setToolTip(
+            "Le chiavi vanno sui fotogrammi che hai visto scorrere; la take finisce con la timeline o con Stop"
+        )
+        self.timeline_chk.toggled.connect(lambda v: setattr(self.bridge, "rec_plays_timeline", bool(v)))
+        tl.addWidget(self.timeline_chk, 1, 0, 1, 2)
+        self.bake_chk = QtWidgets.QCheckBox("Chiavi su una camera nuova allo stop")
         self.bake_chk.setChecked(True)
         self.bake_chk.toggled.connect(lambda v: setattr(self.bridge, "auto_bake", bool(v)))
-        tl.addWidget(self.bake_chk, 1, 0, 1, 2)
+        tl.addWidget(self.bake_chk, 2, 0, 1, 2)
         self.take_status = QtWidgets.QLabel("")
         self.take_status.setObjectName("hint")
         self.take_status.setWordWrap(True)
         self.take_status.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-        tl.addWidget(self.take_status, 2, 0, 1, 2)
+        tl.addWidget(self.take_status, 3, 0, 1, 2)
         lay.addWidget(box)
 
         # --- numeri veri ---
@@ -421,12 +433,18 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
             except (RuntimeError, OSError, ValueError) as e:
                 QtWidgets.QMessageBox.critical(self, "MagiCAM", f"Take non salvata: {e}")
                 return
-            chiavi = f" · {self.bridge.last_bake_keys} chiavi" if self.bridge.auto_bake else ""
-            self.take_status.setText(f"salvata: {path}{chiavi}")
+            self.take_status.setText(self._take_summary(path))
         else:
             self.bridge.start_take(self.take_name.text().strip())
             self.take_status.setText(f"registro «{self.bridge.recorder.name}»…")
         self.refresh()
+
+    def _take_summary(self, path: Any) -> str:
+        b = self.bridge
+        if b.auto_bake and b.last_take_camera:
+            how = "sui fotogrammi visti" if b.last_bake_mode == "timeline" else "dal fotogramma del Rec"
+            return f"salvata: {path} · {b.last_bake_keys} chiavi {how} su {b.last_take_camera}"
+        return f"salvata: {path}"
 
     def _set_filter(self, on: bool) -> None:
         self.session.filter_enabled = bool(on)
@@ -451,7 +469,9 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         rate = self._pose_rate(st.received) if running else 0.0
 
         # spia: lo stato del collegamento visto dal PC, non quello che il telefono crede
-        if not running:
+        if not running and self.bridge.fault:
+            self._set_pill("FERMO: " + self.bridge.fault, RED)
+        elif not running:
             self._set_pill("fermo", GREY)
         elif self.bridge.link_lost:
             silence = st.silence_s(time.perf_counter()) or 0.0
@@ -483,8 +503,12 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         if rec.recording and not self.take_status.text().startswith("registro"):
             self.take_status.setText(f"registro «{rec.name}»… (avviata dal telefono)")
         elif not rec.recording and self.take_status.text().startswith("registro") and self.bridge.last_take_path:
-            chiavi = f" · {self.bridge.last_bake_keys} chiavi" if self.bridge.auto_bake else ""
-            self.take_status.setText(f"salvata: {self.bridge.last_take_path}{chiavi}")
+            self.take_status.setText(self._take_summary(self.bridge.last_take_path))
+        if self.bridge.last_error:
+            self.take_status.setText(f"ERRORE {self.bridge.last_error}")
+            self.take_status.setStyleSheet(f"color: {RED};")
+        else:
+            self.take_status.setStyleSheet("")
         for w in (self.start_btn, self.freeze_btn, self.rec_btn):
             w.style().unpolish(w)
             w.style().polish(w)
@@ -514,7 +538,7 @@ class MagiCamPanel(QtWidgets.QDialog):  # type: ignore[misc]
         bonjour = (
             "Bonjour on" if self.bridge.advertiser is not None and self.bridge.advertiser.running else "Bonjour off"
         )
-        state = "in ascolto" if running else "fermo"
+        state = "in ascolto" if running else ("FERMO: " + self.bridge.fault if self.bridge.fault else "fermo")
         if running and self.bridge.link_lost:
             silence = st.silence_s(time.perf_counter()) or 0.0
             state = f"COLLEGAMENTO PERSO da {silence:.1f} s"

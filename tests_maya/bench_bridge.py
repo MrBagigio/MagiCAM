@@ -158,7 +158,7 @@ def bake_last_take(method: str = "api", max_seconds: float | None = None, take_p
     if method == "slow":
         n = _bake_slow(b, take, cam, resample(take, b.scene_fps(), 1))
     else:
-        n = b.bake_take(take, start_frame=1)
+        n = b.bake_take(take, camera=cam, start_frame=1)  # banco storico: chiavi sulla SUA camera
     dt = time.perf_counter() - t0
     # verifica a campione: la chiave a meta' deve riprodurre la posa ricampionata (posizione in unita' UI)
     keys = resample(take, b.scene_fps(), 1)

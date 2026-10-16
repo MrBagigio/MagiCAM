@@ -181,7 +181,7 @@ def test_load_rejects_garbage(tmp_path: Path):
     with pytest.raises(TakeError, match="crescente"):
         load_take(bad)
     bad.write_text(json.dumps({"magicam_take": 7, "samples": []}), encoding="utf-8")
-    with pytest.raises(TakeError, match="v1"):
+    with pytest.raises(TakeError, match="formati 1-"):
         load_take(bad)
 
 

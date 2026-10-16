@@ -3,6 +3,30 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — Regia dal vivo R1-R3: take sulla timeline, una camera per take, guasti che si dicono — 2026-10-16
+
+**Cosa.** Dai quattro bloccanti misurati in docs/VALUTAZIONE_REGIA_LIVE.md. **R1** il tick scrive nel campione il
+fotogramma a video, solo mentre Maya riproduce; Rec (`rec_plays_timeline`, predefinito) fa partire il playback una
+volta, a tempo reale, dall'inizio del range, e la take finisce quando il playback finisce; le chiavi vanno sui
+fotogrammi visti (`keys_for_take` → `resample_timeline`, formato take 2 col campo `frame`, il formato 1 si legge
+ancora), altrimenti «a tempo» dal fotogramma del Rec, mai da quello dello Stop. **R2** la camera dal vivo non deve
+avere animazione (`start` rifiuta, con il motivo), e ogni take si cuoce su una camera NUOVA, copia di quella dal vivo,
+nel gruppo `magicam_takes_grp` a origine: niente lotta curve/dal vivo, niente coda della take prima, valori nel mondo
+anche se la camera dal vivo sta in un rig. **R3** camera sparita, scena nuova o aperta (`deleteAll`), errore nel tick:
+il ponte si ferma UNA volta, salva la take e scrive il motivo in `fault`; lo stop (pannello chiuso, telefono, fine
+playback) salva sempre la take e mette gli errori in `last_error`. Pannello: casella «Rec fa partire la timeline»,
+guasto in rosso, take con camera e modo («sui fotogrammi visti» / «dal fotogramma del Rec»), camera predefinita
+`magicam_live`.
+
+**Misurato.** In Maya prima di scrivere: `cmds.play` torna in 2 ms, il timer scatta una volta per fotogramma in
+playback. Dopo la cura, stesso banco di prima (docs/MISURE.md): C chiavi 0-74 sui fotogrammi visti; testina spostata a
+mano → 37-99 a tempo; camera dal vivo senza curve, 0,0 cm al cambio di fotogramma; camera con chiavi rifiutata; camera
+cancellata → 1 errore invece di 59 al secondo. Il primo giro dopo la cura ha trovato due difetti nuovi (chiave del Rec
+mancante, scrub preso per playback): curati, con test e rimisurati. Test: 116 verdi (7 nuovi sulla timeline).
+
+**Aperto.** Prova «scena nuova» non fatta (scena dell'utente in uso). Mai provato col telefono vero sopra
+un'animazione. Un Rec dal telefono a timeline ferma con Maya che non riproduce va «a tempo» (voluto).
+
 ### v2 — Pannello rifatto, icona e pulsante nella shelf — 2026-10-16
 
 **Cosa.** `magicam/ui/panel.py` riscritto: sezioni Collegamento / Camera / Take / Dal telefono, spia colorata dello

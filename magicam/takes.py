@@ -6,6 +6,11 @@ Il v1 scriveva una chiave per pacchetto e avanzava la timeline di un fotogramma:
 
 Una take grezza si salva in JSON con scrittura atomica (tmp + replace) accanto alla scena: se Maya cade, la take c'e'.
 Niente si cancella: `TakeLibrary.discard` sposta in `_cestino/`.
+
+Agganciata alla timeline (R1, 2026-10-16): durante una take il tick del bridge scrive nel campione il fotogramma di
+Maya che il regista stava guardando (`Sample.frame`). Se la timeline scorreva, le chiavi vanno su QUEI fotogrammi
+(`keys_for_take` -> `resample_timeline`); se era ferma, da `rec_frame` (il fotogramma al Rec), non da quello allo Stop.
+MISURATO prima della cura: Rec a 1, testina a 100 durante la take, Stop -> chiavi 100-167.
 """
 
 from __future__ import annotations
@@ -28,7 +33,7 @@ from magicam import PROTOCOL_VERSION, __version__
 from magicam.math3d import Transform, quat_slerp, quat_to_euler_xyz_deg, vec_lerp
 from magicam.protocol import PoseMessage
 
-TAKE_FORMAT = 1
+TAKE_FORMAT = 2  # 2: campo `frame` (fotogramma di Maya) in coda al campione; il formato 1 si legge ancora
 TAKE_SUFFIX = ".magicam.json"
 CESTINO = "_cestino"
 
@@ -46,6 +51,7 @@ class Sample:
     image_w: int = 0
     image_h: int = 0
     tracking_ok: bool = True
+    frame: float | None = None  # fotogramma di Maya al tick che ha applicato questa posa (solo l'ultima del tick)
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,18 +90,24 @@ class TakeRecorder:
         self._last_camera: Transform | None = None
         self._last_t: float | None = None
         self._skipped_no_camera = 0
+        self.rec_frame: float | None = None
 
-    def start(self, name: str) -> None:
+    def start(self, name: str, frame: float | None = None) -> None:
+        """`frame` = fotogramma di Maya al Rec: da li' partono le chiavi se la timeline non scorre."""
         if self.recording:
             raise RuntimeError("take gia' in corso")
         self.name = name or datetime.now().strftime("take_%Y%m%d_%H%M%S")
         self._samples = []
         self._last_t = None
         self._skipped_no_camera = 0
+        self.rec_frame = frame
         self.recording = True
 
-    def add(self, msg: PoseMessage, camera: Transform | None) -> None:
-        """camera=None vuol dire «la camera non si e' mossa» (hold): si registra l'ultima posa applicata."""
+    def add(self, msg: PoseMessage, camera: Transform | None, frame: float | None = None) -> None:
+        """camera=None vuol dire «la camera non si e' mossa» (hold): si registra l'ultima posa applicata.
+
+        `frame`: il fotogramma di Maya mostrato quando questa posa e' stata applicata (il bridge lo passa solo
+        all'ultima posa di ogni tick, quella che la camera ha davvero preso)."""
         if camera is not None:
             self._last_camera = camera
         if not self.recording:
@@ -115,6 +127,7 @@ class TakeRecorder:
                 msg.image_w,
                 msg.image_h,
                 msg.tracking_ok,
+                frame,
             )
         )
 
@@ -128,6 +141,7 @@ class TakeRecorder:
             "protocol_version": PROTOCOL_VERSION,
             "samples": len(self._samples),
             "skipped_no_camera": self._skipped_no_camera,
+            "rec_frame": self.rec_frame,
         }
         if metadata:
             meta.update(metadata)
@@ -156,19 +170,77 @@ def resample(take: Take, fps: float, start_frame: int = 1) -> list[Keyframe]:
     times = [x.t for x in s]
     t0 = times[0]
     n = math.floor(take.duration * fps + 1e-9) + 1
+    return [_key_at(s, times, start_frame + k, t0 + k / fps, t0) for k in range(n)]
+
+
+def _key_at(s: Sequence[Sample], times: Sequence[float], frame: int, t: float, t0: float) -> Keyframe:
+    """La posa della camera al tempo `t` del sensore: lerp della posizione, slerp della rotazione."""
+    i = bisect_right(times, t) - 1
+    i = max(0, min(i, len(s) - 2))
+    a, b = s[i], s[i + 1]
+    span = b.t - a.t
+    u = 0.0 if span <= 0 else max(0.0, min(1.0, (t - a.t) / span))
+    cam = Transform(vec_lerp(a.camera.pos, b.camera.pos, u), quat_slerp(a.camera.quat, b.camera.quat, u))
+    focal = a.focal_px + (b.focal_px - a.focal_px) * u
+    return Keyframe(frame, t - t0, cam, focal)
+
+
+def timeline_anchors(take: Take) -> list[tuple[float, float]]:
+    """(fotogramma, t_sensor) del PRIMO tick che ha visto ogni fotogramma, in ordine crescente.
+
+    Ci si ferma al primo fotogramma che torna indietro (loop della timeline, o testina spostata a mano): da li' in
+    poi il legame tempo -> fotogramma non e' piu' quello di una ripresa continua. Lista vuota = la timeline non
+    scorreva (meno di due fotogrammi distinti)."""
+    out: list[tuple[float, float]] = []
+    for smp in take.samples:
+        if smp.frame is None:
+            continue
+        if out and smp.frame < out[-1][0]:
+            break
+        if not out or smp.frame > out[-1][0]:
+            out.append((smp.frame, smp.t))
+    return out if len(out) >= 2 else []
+
+
+def resample_timeline(take: Take, anchors: Sequence[tuple[float, float]]) -> list[Keyframe]:
+    """Una chiave per OGNI fotogramma intero che la timeline ha attraversato, con la posa di quando era a video.
+
+    Un fotogramma saltato dal playback prende il tempo interpolato fra i due vicini visti."""
+    s = take.samples
+    if len(s) < 2 or len(anchors) < 2:
+        return []
+    times = [x.t for x in s]
+    fs = [a[0] for a in anchors]
+    ts = [a[1] for a in anchors]
+    first, last = math.ceil(fs[0] - 1e-9), math.floor(fs[-1] + 1e-9)
     keys: list[Keyframe] = []
-    for k in range(n):
-        t_rel = k / fps
-        t = t0 + t_rel
-        i = bisect_right(times, t) - 1
-        i = max(0, min(i, len(s) - 2))
-        a, b = s[i], s[i + 1]
-        span = b.t - a.t
-        u = 0.0 if span <= 0 else max(0.0, min(1.0, (t - a.t) / span))
-        cam = Transform(vec_lerp(a.camera.pos, b.camera.pos, u), quat_slerp(a.camera.quat, b.camera.quat, u))
-        focal = a.focal_px + (b.focal_px - a.focal_px) * u
-        keys.append(Keyframe(start_frame + k, t_rel, cam, focal))
+    for frame in range(first, last + 1):
+        j = bisect_right(fs, frame) - 1
+        j = max(0, min(j, len(fs) - 2))
+        df = fs[j + 1] - fs[j]
+        u = 0.0 if df <= 0 else (frame - fs[j]) / df
+        t = ts[j] + (ts[j + 1] - ts[j]) * u
+        keys.append(_key_at(s, times, frame, t, s[0].t))
     return keys
+
+
+def keys_for_take(take: Take, fps: float, fallback_start: int) -> tuple[list[Keyframe], str]:
+    """Le chiavi di una take e come sono state messe: «timeline» (fotogrammi visti) o «tempo» (dal Rec, agli fps).
+
+    Senza timeline che scorre, la prima chiave e' il fotogramma al Rec (`metadata.rec_frame`); `fallback_start`
+    solo per le take vecchie che non lo hanno."""
+    anchors = timeline_anchors(take)
+    rec = take.metadata.get("rec_frame")
+    if anchors:
+        # MISURATO (banco del 2026-10-16): Rec a 0, il primo tick vede gia' 1 -> mancava la chiave del Rec. Il
+        # fotogramma del Rec e' a video dal primo campione fino al primo fotogramma visto dopo.
+        # Solo se il playback e' partito DAL Rec (entro 2 fotogrammi): un playback avviato a mano molto dopo
+        # stirerebbe il moto sull'intervallo.
+        if isinstance(rec, (int, float)) and 0 < anchors[0][0] - rec <= 2 and take.samples[0].t < anchors[0][1]:
+            anchors = [(float(rec), take.samples[0].t), *anchors]
+        return resample_timeline(take, anchors), "timeline"
+    start = round(float(rec)) if isinstance(rec, (int, float)) else fallback_start
+    return resample(take, fps, start), "tempo"
 
 
 _FPS_NAMES = {
@@ -212,12 +284,13 @@ def _sample_to_row(s: Sample) -> list[object]:
         s.image_w,
         s.image_h,
         s.tracking_ok,
+        s.frame,
     ]
 
 
 def _row_to_sample(row: Sequence[object]) -> Sample:
-    if len(row) != 19:
-        raise TakeError(f"campione con {len(row)} campi, attesi 19")
+    if len(row) not in (19, 20):
+        raise TakeError(f"campione con {len(row)} campi, attesi 19 (formato 1) o 20")
     f = [float(x) for x in row[:16]]  # type: ignore[arg-type]
     for v in f:
         if math.isnan(v) or math.isinf(v):
@@ -230,6 +303,7 @@ def _row_to_sample(row: Sequence[object]) -> Sample:
         int(row[16]),  # type: ignore[call-overload]
         int(row[17]),  # type: ignore[call-overload]
         bool(row[18]),
+        None if len(row) == 19 or row[19] is None else float(row[19]),  # type: ignore[arg-type]
     )
 
 
@@ -267,8 +341,8 @@ def load_take(path: Path) -> Take:
             doc = json.load(fh)
     except (OSError, json.JSONDecodeError) as e:
         raise TakeError(f"{path.name}: {e}") from e
-    if not isinstance(doc, dict) or doc.get("magicam_take") != TAKE_FORMAT:
-        raise TakeError(f"{path.name}: non e' una take MagiCAM v{TAKE_FORMAT}")
+    if not isinstance(doc, dict) or doc.get("magicam_take") not in (1, TAKE_FORMAT):
+        raise TakeError(f"{path.name}: non e' una take MagiCAM (formati 1-{TAKE_FORMAT})")
     rows = doc.get("samples")
     if not isinstance(rows, list):
         raise TakeError(f"{path.name}: campioni assenti")

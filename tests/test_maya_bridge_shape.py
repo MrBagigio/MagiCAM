@@ -25,11 +25,19 @@ def test_commands_are_queued_not_executed_in_network_thread():
     assert b.session.state().frozen
 
 
-def test_tick_without_maya_and_without_poses_costs_nothing_and_does_not_raise():
+def test_tick_without_maya_does_not_raise_and_stops_once_with_a_reason():
+    # R3: il tick controlla la camera a ogni scatto (anche senza pose: una camera cancellata col telefono fermo).
+    # Un guasto ferma il ponte UNA volta e lo scrive in `fault`; prima: un'eccezione per tick (59 in 1 s in Maya).
     r = Receiver(port=0, host="127.0.0.1")
     b = maya_bridge.MayaCameraBridge(Session(), r, "camera1")
+    seen = []
+    b.on_state_changed = lambda: seen.append(b.fault)
     b.tick()
-    assert b.stats.ticks == 1 and b.stats.applied == 0 and math.isfinite(b.stats.last_cost_ms)
+    b.tick()
+    assert b.stats.ticks == 2 and b.stats.applied == 0 and math.isfinite(b.stats.last_cost_ms)
+    assert b.fault is not None and "maya" in b.fault
+    assert seen == [b.fault]  # avvisato una volta sola
+    assert not r.running
 
 
 def test_units_per_meter_needs_maya():
