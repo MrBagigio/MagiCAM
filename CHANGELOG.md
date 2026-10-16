@@ -3,6 +3,26 @@
 Una voce per commit che cambia comportamento, in testa: cosa, perche', cosa e' stato misurato, cosa resta aperto.
 «Misurato» vuol dire eseguito, con il numero in `docs/MISURE.md`; altrimenti la voce dice «scritto, non misurato».
 
+### v2 — iPhone: formato video a fps massimi e PING alla connessione pronta — 2026-10-16
+
+**Cosa.** Due correzioni nate dal primo collegamento dal vivo (docs/MISURE.md, F2.6). (1) `ARSessionManager.start`
+sceglie in `ARWorldTrackingConfiguration.supportedVideoFormats` (fotocamera posteriore) il formato con piu' fps, a
+parita' quello con piu' pixel (`VideoFormatPicker` in MagiCAMCore), invece del default, che su quel telefono girava a
+30 fps (327 frame in 10,90 s dal t_sensor); la vista mostra il formato scelto e quelli disponibili, e il PING
+periodico va agli fps del formato (prima «ogni 60 frame» = ogni 2 s a 30 Hz). (2) `UDPLink` (spostato in MagiCAMCore)
+ha un `greeting`: il PING col codice parte quando la connessione passa a `.ready`, a ogni passaggio, sotto lo stesso
+lock dei `send`, quindi prima di ogni posa. Prima il PING partiva subito dopo `connect`, a link non pronto, e `send`
+lo scartava in silenzio: le pose arrivavano «non abbinate» fino al PING del 60° frame (31 all'avvio il 2026-10-16).
+
+**Misurato.** `swift test` di MagiCAMCore in CI (non c'e' Swift su questo PC): banco su UDP vero in loopback, le
+pose spedite da PRIMA che il link sia pronto; il primo datagramma di ogni connessione (anche la seconda) e' il PING,
+uno solo. Contrasto nello stesso banco col modo di prima (PING subito dopo `connect`, niente greeting): `send`
+restituisce false e il PING non arriva mai, le pose si'. Esito in CI e build dell'.ipa: vedi il run del commit.
+
+**Aperto.** Sul telefono non misurato: quanti fps da' davvero il formato scelto (t_sensor, come F2.6) e che il PC
+abbini dalla prima posa (0 «non abbinate»). Lo installa l'utente con Sideloadly. Se il telefono offre solo formati
+a 30 fps la vista lo dice («Disponibili: …»).
+
 ### v2 — Bake in blocco misurato, undo pulito, il «Maya inchiodato» che non lo era — 2026-10-15
 
 **Pannello in Maya (F1.10), stesso giorno.** Aperto nel Maya dell'utente su una camera nuova, simulatore a 60 Hz:

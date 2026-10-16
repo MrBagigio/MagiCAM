@@ -124,6 +124,10 @@ struct ContentView: View {
         Section("Stato") {
             row("Rete", linkText)
             row("Tracking ARKit", ARSessionManager.describe(manager.tracking))
+            row("Formato video", manager.videoFormat)
+            if !manager.videoFormatsAvailable.isEmpty {
+                Text("Disponibili: \(manager.videoFormatsAvailable)").font(.footnote).foregroundColor(.secondary)
+            }
             row("Pacchetti spediti", "\(manager.framesSent)")
             if let s = freshStats {
                 row("Ricevuti dal PC", "\(s.received)")

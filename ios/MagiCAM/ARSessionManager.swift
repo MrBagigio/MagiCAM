@@ -16,6 +16,10 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     @Published var stats: StatsMessage?
     @Published var statsAge: TimeInterval = .infinity
     @Published var notice: String?
+    /// Il formato video scelto (fps e risoluzione) e quelli che il telefono offre: a video, per sapere a quanti Hz
+    /// arrivano le pose senza misurarlo ogni volta dal PC.
+    @Published var videoFormat: String = "—"
+    @Published var videoFormatsAvailable: String = ""
 
     /// Token di pairing (F4.1). 0 = nessuno; il PC puo' rifiutare i comandi senza token.
     var token: UInt32 = 0
@@ -28,6 +32,7 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     private var wasRelocalizing = false
     private var uiFrameCounter = 0
     private var framesSinceLastPing = 0
+    private var framesPerPing = 60 // un PING al secondo: agli fps del formato scelto
 
     override init() {
         super.init()
@@ -37,6 +42,11 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         }
         link.onReceive = { [weak self] data in
             self?.handleIncoming(data)
+        }
+        // Il PING col codice parte quando la connessione e' PRONTA, e prima di ogni posa: mandato subito dopo
+        // `connect` veniva scartato (link non pronto) e le prime pose arrivavano «non abbinate» (31 il 2026-10-16).
+        link.greeting = { [weak self] in
+            self?.commandData(.ping) ?? Data()
         }
     }
 
@@ -56,10 +66,34 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
         connecting(link)
         let config = ARWorldTrackingConfiguration()
         config.worldAlignment = .gravity
+        chooseVideoFormat(for: config)
         session.run(config, options: [.resetTracking, .removeExistingAnchors])
         isRunning = true
         notice = nil
-        send(.ping) // primo abbinamento subito, prima delle pose
+        // niente PING qui: lo manda UDPLink a .ready (greeting), prima della prima posa
+    }
+
+    /// Il formato a fps piu' alti (a parita', piu' pixel) fra quelli della fotocamera posteriore: il default di
+    /// ARKit su questo iPhone e' a 30 fps.
+    private func chooseVideoFormat(for config: ARWorldTrackingConfiguration) {
+        let formats = ARWorldTrackingConfiguration.supportedVideoFormats.filter { $0.captureDevicePosition == .back }
+        let candidates = formats.map {
+            VideoFormatCandidate(
+                framesPerSecond: $0.framesPerSecond,
+                width: Int($0.imageResolution.width),
+                height: Int($0.imageResolution.height)
+            )
+        }
+        if let i = VideoFormatPicker.bestIndex(candidates) {
+            config.videoFormat = formats[i]
+            videoFormat = candidates[i].label
+            framesPerPing = Swift.max(1, candidates[i].framesPerSecond)
+        } else {
+            let f = config.videoFormat
+            videoFormat = "default ARKit: \(f.framesPerSecond) fps · \(Int(f.imageResolution.width))×\(Int(f.imageResolution.height))"
+            framesPerPing = Swift.max(1, f.framesPerSecond)
+        }
+        videoFormatsAvailable = candidates.map(\.label).joined(separator: ", ")
     }
 
     func stop() {
@@ -71,6 +105,10 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
     // MARK: - comandi
 
     func send(_ command: CommandCode, value: Float = 0) {
+        link.send(commandData(command, value: value))
+    }
+
+    private func commandData(_ command: CommandCode, value: Float = 0) -> Data {
         commandSeq &+= 1
         let m = CommandMessage(
             seq: commandSeq,
@@ -79,7 +117,7 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
             token: token,
             value: value
         )
-        link.send(PoseEncoder.encode(m))
+        return PoseEncoder.encode(m)
     }
 
     // MARK: - ARSessionDelegate
@@ -108,7 +146,7 @@ final class ARSessionManager: NSObject, ObservableObject, ARSessionDelegate {
 
         // PING col codice ogni secondo: e' cosi' che il PC abbina questo telefono (F4.1) e tiene vivo l'abbinamento
         framesSinceLastPing += 1
-        if framesSinceLastPing >= 60 {
+        if framesSinceLastPing >= framesPerPing {
             framesSinceLastPing = 0
             send(.ping)
         }

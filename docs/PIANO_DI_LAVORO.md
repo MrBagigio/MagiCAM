@@ -364,6 +364,9 @@ prova e' stata eseguita e il numero sta in `docs/MISURE.md` con data e sha; altr
       a 10 cm; giro a vista) → la camera di Maya si muove nel verso e nella misura attesi, con ancora all'origine E con
       ancora a (500,150,0) girata 90°. Latenza telefono→viewport misurata (ripresa video a 240 fps del telefono e dello
       schermo, o LED sincronizzato). → `docs/MISURE.md`.
+      *(2026-10-16: collegamento dal vivo fatto, 30 Hz e 31 pose «non abbinate» all'avvio. Curati nell'app, scritto e
+      provato in CI, NON sul telefono: formato video a fps massimi mostrato a video, PING a `.ready` prima di ogni posa
+      (`UDPLink.greeting`, banco in loopback con contrasto). Da rimisurare sull'iPhone: fps dal t_sensor, 0 non abbinate.)*
 
 ### F3 — Take
 
